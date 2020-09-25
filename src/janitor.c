@@ -109,7 +109,8 @@ static void resume_sockets(void)
 		pool = container_of(item, PgPool, head);
 		if (pool->db->admin)
 			continue;
-		resume_socket_list(&pool->active_client_list);
+		if (!pool->mirror)
+			resume_socket_list(&pool->active_client_list);
 		resume_socket_list(&pool->active_server_list);
 		resume_socket_list(&pool->idle_server_list);
 		resume_socket_list(&pool->used_server_list);
@@ -184,10 +185,18 @@ static void per_loop_activate(PgPool *pool)
 			/* db not fully initialized after reboot */
 			if (client->wait_for_welcome && !pool->welcome_msg_ready) {
 				launch_new_connection(pool);
+				log_debug("launching for pool, client: %p", client);
+				/* assume we need one for the mirror pool, as well */
+				if (client->mirror_pool) {
+					launch_new_connection(client->mirror_pool);
+					log_debug("launching for mirror, too");
+				}
 				continue;
 			}
 
 			/* there is a ready server already */
+			Assert(!pool->mirror)
+			log_debug("activating from janitor, %p", pool);
 			activate_client(client);
 		} else if (sv_tested > 0) {
 			/* some connections are in testing process */
@@ -198,7 +207,10 @@ static void per_loop_activate(PgPool *pool)
 			--sv_used;
 		} else {
 			/* not enough connections */
+			log_debug("launching here");
 			launch_new_connection(pool);
+			if (client->mirror_pool)
+				launch_new_connection(client->mirror_pool);
 			break;
 		}
 	}
@@ -234,12 +246,14 @@ static int per_loop_suspend(PgPool *pool, bool force_suspend)
 	if (pool->db->admin)
 		return 0;
 
-	active += suspend_socket_list(&pool->active_client_list, force_suspend);
+	if (!pool->mirror) {
+		active += suspend_socket_list(&pool->active_client_list, force_suspend);
 
-	/* this list is not suspendable, but still need force_suspend and counting */
-	active += suspend_socket_list(&pool->waiting_client_list, force_suspend);
-	if (active)
-		per_loop_activate(pool);
+		/* this list is not suspendable, but still need force_suspend and counting */
+		active += suspend_socket_list(&pool->waiting_client_list, force_suspend);
+		if (active)
+			per_loop_activate(pool);
+	}
 
 	if (!active) {
 		active += suspend_socket_list(&pool->active_server_list, force_suspend);

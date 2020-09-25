@@ -227,9 +227,12 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	char state;
 	SBuf *sbuf = &server->sbuf;
 	PgSocket *client = server->link;
+
 	bool async_response = false;
 
 	Assert(!server->pool->db->admin);
+
+	slog_debug(server, "handle_server_work, client: %p pkt: %c", client, pkt_desc(pkt));
 
 	switch (pkt->type) {
 	default:
@@ -294,6 +297,7 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 			disconnect_server(server, true, "invalid server parameter");
 			return false;
 		}
+		server->pool->stats.error_count += 1;
 		/* fallthrough */
 	case 'C':		/* CommandComplete */
 
@@ -351,7 +355,7 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 		if (client->state == CL_LOGIN) {
 			return handle_auth_query_response(client, pkt);
 		} else {
-			sbuf_prepare_send(sbuf, &client->sbuf, pkt->len);
+			sbuf_prepare_send(sbuf, &client->sbuf, NULL, pkt->len);
 
 			/* every statement (independent or in a transaction) counts as a query */
 			if ((ready || idle_tx) && client->query_start) {
@@ -376,7 +380,7 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 			}
 		}
 	} else {
-		if (server->state != SV_TESTED)
+		if (server->state != SV_TESTED && !server->pool->mirror)
 			slog_warning(server,
 				     "got packet '%c' from server when not linked",
 				     pkt_desc(pkt));
@@ -531,11 +535,14 @@ bool server_proto(SBuf *sbuf, SBufEvent evtype, struct MBuf *data)
 			break;
 
 		if (server->setting_vars) {
-			PgSocket *client = server->link;
-			Assert(client);
-
 			server->setting_vars = 0;
-			sbuf_continue(&client->sbuf);
+
+			PgSocket *client = server->link;
+			if (!pool->mirror) {
+				Assert(client);
+
+				sbuf_continue(&client->sbuf);
+			}
 			break;
 		}
 

@@ -186,7 +186,9 @@ bool parse_database(void *base, const char *name, const char *connstr)
 	char *tmp_connstr;
 	const char *dbname = name;
 	char *host = NULL;
+	char *mirror_host = NULL;
 	char *port = "5432";
+	char *mirror_port = "5432";
 	char *username = NULL;
 	char *password = "";
 	char *auth_username = cf_auth_user;
@@ -197,6 +199,7 @@ bool parse_database(void *base, const char *name, const char *connstr)
 	char *appname = NULL;
 
 	int v_port;
+	int v_mirror_port;
 
 	cv.value_p = &pool_mode;
 	cv.extra = (const void *)pool_mode_map;
@@ -224,8 +227,12 @@ bool parse_database(void *base, const char *name, const char *connstr)
 			dbname = val;
 		} else if (strcmp("host", key) == 0) {
 			host = val;
+		} else if (strcmp("mirror_host", key) == 0) {
+			mirror_host = val;
 		} else if (strcmp("port", key) == 0) {
 			port = val;
+		} else if (strcmp("mirror_port", key) == 0) {
+			mirror_port = val;
 		} else if (strcmp("user", key) == 0) {
 			username = val;
 		} else if (strcmp("password", key) == 0) {
@@ -269,6 +276,15 @@ bool parse_database(void *base, const char *name, const char *connstr)
 		goto fail;
 	}
 
+	/* mirror_port= */
+	v_mirror_port = atoi(mirror_port);
+	if (v_mirror_port == 0)
+	{
+		log_error("database %s has a"
+							" bad mirror port: %s",
+							name, port);
+	}
+
 	db = add_database(name);
 	if (!db) {
 		log_error("cannot create database, no memory?");
@@ -281,6 +297,14 @@ bool parse_database(void *base, const char *name, const char *connstr)
 		if (!host) {
 			log_error("failed to allocate host=");
 			goto fail;
+		}
+	}
+
+	/* host= */
+	if (mirror_host) {
+		mirror_host = strdup(mirror_host);
+		if (!mirror_host) {
+			log_error("failed to allocate mirror_host=; skipping mirroring");
 		}
 	}
 
@@ -299,7 +323,13 @@ bool parse_database(void *base, const char *name, const char *connstr)
 			changed = true;
 		} else if (host && strcmp(host, db->host) != 0) {
 			changed = true;
+		} else if (!!mirror_host != !!db->mirror_host) {
+			changed = true;
+		} else if (mirror_host && strcmp(mirror_host, db->mirror_host) != 0) {
+			changed = true;
 		} else if (v_port != db->port) {
+			changed = true;
+		} else if (v_mirror_port != db->mirror_port) {
 			changed = true;
 		} else if (username && !db->forced_user) {
 			changed = true;
@@ -325,8 +355,12 @@ bool parse_database(void *base, const char *name, const char *connstr)
 
 	if (db->host)
 		free(db->host);
+	if (db->mirror_host)
+		free(db->mirror_host);
 	db->host = host;
 	db->port = v_port;
+	db->mirror_host = mirror_host;
+	db->mirror_port = v_mirror_port;
 
 	/* assign connect_query */
 	set_connect_query(db, connect_query);

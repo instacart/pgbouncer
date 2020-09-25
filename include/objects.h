@@ -29,19 +29,26 @@ extern struct Slab *pool_cache;
 extern struct Slab *user_cache;
 extern struct Slab *iobuf_cache;
 
+struct DNSCallbackArg {
+	PgSocket *server;
+	bool mirrored;
+};
+
 PgDatabase *find_database(const char *name);
 PgUser *find_user(const char *name);
-PgPool *get_pool(PgDatabase *, PgUser *);
+PgPool *get_pool(PgDatabase *, PgUser *, bool mirrored);
 PgSocket *compare_connections_by_time(PgSocket *lhs, PgSocket *rhs);
 bool evict_connection(PgDatabase *db)		_MUSTCHECK;
 bool evict_user_connection(PgUser *user)	_MUSTCHECK;
-bool find_server(PgSocket *client)		_MUSTCHECK;
+bool find_server(PgSocket *client, bool mirrored)		_MUSTCHECK;
 bool release_server(PgSocket *server)		/* _MUSTCHECK */;
 bool finish_client_login(PgSocket *client)	_MUSTCHECK;
-bool check_fast_fail(PgSocket *client)		_MUSTCHECK;
+bool check_fast_fail(PgSocket *client, bool mirror)		_MUSTCHECK;
 
 PgSocket *accept_client(int sock, bool is_unix) _MUSTCHECK;
+void disconnect_links(PgSocket *client, bool notify, const char *reasons, ...) _PRINTF(3, 4);
 void disconnect_server(PgSocket *server, bool notify, const char *reason, ...) _PRINTF(3, 4);
+void vdisconnect_server(PgSocket *server, bool notify, const char *reason, va_list ap);
 void disconnect_client(PgSocket *client, bool notify, const char *reason, ...) _PRINTF(3, 4);
 
 PgDatabase * add_database(const char *name) _MUSTCHECK;
@@ -56,6 +63,7 @@ void accept_cancel_request(PgSocket *req);
 void forward_cancel_request(PgSocket *server);
 
 void launch_new_connection(PgPool *pool);
+void connect_new_server(PgPool *pool, PgDatabase *db);
 
 bool use_client_socket(int fd, PgAddr *addr, const char *dbname, const char *username, uint64_t ckey, int oldfd, int linkfd,
 		       const char *client_end, const char *std_string, const char *datestyle, const char *timezone,

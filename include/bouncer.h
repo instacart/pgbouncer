@@ -228,6 +228,7 @@ int pga_cmp_addr(const PgAddr *a, const PgAddr *b);
 struct PgStats {
 	uint64_t xact_count;
 	uint64_t query_count;
+	uint64_t error_count;
 	uint64_t server_bytes;
 	uint64_t client_bytes;
 	usec_t xact_time;	/* total transaction time in us */
@@ -278,6 +279,8 @@ struct PgPool {
 	unsigned last_login_failed:1;
 
 	unsigned welcome_msg_ready:1;
+
+	bool mirror; /* true if this is a mirror pool */
 };
 
 #define pool_connected_server_count(pool) ( \
@@ -308,6 +311,7 @@ struct PgPool {
 struct PgUser {
 	struct List head;		/* used to attach user to list */
 	struct List pool_list;		/* list of pools where pool->user == this user */
+	struct List mirrored_pool_list; /* list of mirrored pools, if any */
 	struct AANode tree_node;	/* used to attach user to tree */
 	char name[MAX_USERNAME];
 	char passwd[MAX_PASSWORD];
@@ -340,7 +344,9 @@ struct PgDatabase {
 	PgUser *auth_user;	/* if not NULL, users not in userlist.txt will be looked up on the server */
 
 	char *host;		/* host or unix socket name */
+	char *mirror_host;		/* mirror host or unix socket name */
 	int port;
+	int mirror_port; /* mirror port, if any */
 
 	int pool_size;		/* max server connections in one pool */
 	int res_pool_size;	/* additional server connections in case of trouble */
@@ -369,7 +375,9 @@ struct PgDatabase {
 struct PgSocket {
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
+	PgSocket *mirror_link;		/* mirrored dest of packets, if mirroring/server */
 	PgPool *pool;		/* parent pool, if NULL not yet assigned */
+	PgPool *mirror_pool; /* mirror pool for servers, if NULL not assigned or not used */
 
 	PgUser *auth_user;	/* presented login, for client it may differ from pool->user */
 

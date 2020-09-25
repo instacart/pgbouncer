@@ -142,9 +142,13 @@ void init_caches(void)
 void change_client_state(PgSocket *client, SocketState newstate)
 {
 	PgPool *pool = client->pool;
+	PgPool *mirror_pool = client->mirror_pool;
+	log_debug("changing client state; client: %p, pool: %p, mirror_pool: %p", client, pool, mirror_pool);
+	log_debug("old client state: %d, new_client_state: %d", client->state, newstate);
 
 	/* remove from old location */
-	switch (client->state) {
+	switch (client->state)
+	{
 	case CL_FREE:
 		break;
 	case CL_JUSTFREE:
@@ -276,11 +280,12 @@ static int cmp_pool(struct List *i1, struct List *i2)
 {
 	PgPool *p1 = container_of(i1, PgPool, head);
 	PgPool *p2 = container_of(i2, PgPool, head);
-	if (p1->db != p2->db)
+	log_debug("p1: %p p2: %p mirror1: %d mirror2: %d name1: %s name2: %s", p1, p2, p1->mirror, p2-> mirror, p1->db->name, p2->db->name);
+	if (p1->mirror == p2->mirror && p1->db != p2->db)
 		return strcmp(p1->db->name, p2->db->name);
-	if (p1->user != p2->user)
+	if (p1->mirror == p2->mirror && p1->user != p2->user)
 		return strcmp(p1->user->name, p2->user->name);
-	return 0;
+	return p1->mirror == p2->mirror ? 0 : 1;
 }
 
 /* compare user names, for use with put_in_order */
@@ -385,6 +390,7 @@ PgUser *add_user(const char *name, const char *passwd)
 
 		list_init(&user->head);
 		list_init(&user->pool_list);
+		list_init(&user->mirrored_pool_list);
 		safe_strcpy(user->name, name, sizeof(user->name));
 		put_in_order(&user->head, &user_list, cmp_user);
 
@@ -411,6 +417,7 @@ PgUser *add_db_user(PgDatabase *db, const char *name, const char *passwd)
 
 		list_init(&user->head);
 		list_init(&user->pool_list);
+		list_init(&user->mirrored_pool_list);
 		safe_strcpy(user->name, name, sizeof(user->name));
 
 		aatree_insert(&db->user_tree, (uintptr_t)user->name, &user->tree_node);
@@ -456,6 +463,7 @@ PgUser *force_user(PgDatabase *db, const char *name, const char *passwd)
 			return NULL;
 		list_init(&user->head);
 		list_init(&user->pool_list);
+		list_init(&user->mirrored_pool_list);
 		user->pool_mode = POOL_INHERIT;
 	}
 	safe_strcpy(user->name, name, sizeof(user->name));
@@ -499,7 +507,7 @@ PgUser *find_user(const char *name)
 }
 
 /* create new pool object */
-static PgPool *new_pool(PgDatabase *db, PgUser *user)
+static PgPool *new_pool(PgDatabase *db, PgUser *user, bool mirrored)
 {
 	PgPool *pool;
 
@@ -512,6 +520,7 @@ static PgPool *new_pool(PgDatabase *db, PgUser *user)
 
 	pool->user = user;
 	pool->db = db;
+	pool->mirror = mirrored;
 
 	statlist_init(&pool->active_client_list, "active_client_list");
 	statlist_init(&pool->waiting_client_list, "waiting_client_list");
@@ -522,30 +531,41 @@ static PgPool *new_pool(PgDatabase *db, PgUser *user)
 	statlist_init(&pool->new_server_list, "new_server_list");
 	statlist_init(&pool->cancel_req_list, "cancel_req_list");
 
-	list_append(&user->pool_list, &pool->map_head);
+	if (mirrored) {
+		list_append(&user->mirrored_pool_list, &pool->map_head);
+	} else {
+		list_append(&user->pool_list, &pool->map_head);
+	}
 
 	/* keep pools in db/user order to make stats faster */
+	log_debug("put in order, pool_list, mirror: %d p: %p", mirrored, pool);
 	put_in_order(&pool->head, &pool_list, cmp_pool);
 
 	return pool;
 }
 
 /* find pool object, create if needed */
-PgPool *get_pool(PgDatabase *db, PgUser *user)
+PgPool *get_pool(PgDatabase *db, PgUser *user, bool mirrored)
 {
 	struct List *item;
+	struct List *list;
 	PgPool *pool;
 
 	if (!db || !user)
 		return NULL;
 
-	list_for_each(item, &user->pool_list) {
+	if (mirrored)
+		list = &user->mirrored_pool_list;
+	else
+		list = &user->pool_list;
+
+	list_for_each(item, list) {
 		pool = container_of(item, PgPool, map_head);
 		if (pool->db == db)
 			return pool;
 	}
 
-	return new_pool(db, user);
+	return new_pool(db, user, mirrored);
 }
 
 /* deactivate socket and put into wait queue */
@@ -562,6 +582,7 @@ static void pause_client(PgSocket *client)
 /* wake client from wait */
 void activate_client(PgSocket *client)
 {
+	log_debug("ACTIVATING!");
 	Assert(client->state == CL_WAITING || client->state == CL_WAITING_LOGIN);
 
 	Assert(client->wait_start > 0);
@@ -591,10 +612,10 @@ void activate_client(PgSocket *client)
  * Return true if the client connection should be allowed, false if it
  * should be rejected.
  */
-bool check_fast_fail(PgSocket *client)
+bool check_fast_fail(PgSocket *client, bool mirror)
 {
 	int cnt;
-	PgPool *pool = client->pool;
+	PgPool *pool = mirror ? client->mirror_pool : client->pool;
 
 	/* If last login succeeded, client can go ahead. */
 	if (!pool->last_login_failed)
@@ -621,19 +642,23 @@ bool check_fast_fail(PgSocket *client)
 }
 
 /* link if found, otherwise put into wait queue */
-bool find_server(PgSocket *client)
+bool find_server(PgSocket *client, bool mirrored)
 {
-	PgPool *pool = client->pool;
+
+	PgPool *pool = mirrored ? client->mirror_pool : client->pool;
+	PgSocket *link = mirrored ? client->mirror_link : client->link;
 	PgSocket *server;
 	bool res;
 	bool varchange = false;
 
+	log_debug("find_server %d", mirrored);
+
 	Assert(client->state == CL_ACTIVE || client->state == CL_LOGIN);
 
-	/* no wait by default */
-	client->wait_start = 0;
+	if (!mirrored)
+		client->wait_start = 0; /* no wait by default */
 
-	if (client->link)
+	if (link)
 		return true;
 
 	/* try to get idle server, if allowed */
@@ -641,7 +666,9 @@ bool find_server(PgSocket *client)
 		server = NULL;
 	} else {
 		while (1) {
+			log_debug("inner loop finding socket");
 			server = first_socket(&pool->idle_server_list);
+			log_debug("inner loop got server: %p", server);
 			if (!server) {
 				break;
 			} else if (server->close_needed) {
@@ -653,15 +680,21 @@ bool find_server(PgSocket *client)
 			}
 		}
 
-		if (!server && !check_fast_fail(client))
+		if (!server && !check_fast_fail(client, mirrored)) {
+			log_debug("fast fail");
 			return false;
+		}
 
 	}
 	Assert(!server || server->state == SV_IDLE);
 
+	log_debug("got past first hurdle");
+
 	/* send var changes */
 	if (server) {
+		log_debug("got here with a server");
 		res = varcache_apply(server, client, &varchange);
+		log_debug("got varchange: %d", varchange);
 		if (!res) {
 			disconnect_server(server, true, "var change failed");
 			server = NULL;
@@ -670,19 +703,26 @@ bool find_server(PgSocket *client)
 
 	/* link or send to waiters list */
 	if (server) {
-		client->link = server;
-		server->link = client;
+		if (mirrored)
+			client->mirror_link = server;
+			/* do not set the server link back for mirrored servers */
+		else {
+			client->link = server;
+			server->link = client;
+		}
 		change_server_state(server, SV_ACTIVE);
 		if (varchange) {
 			server->setting_vars = 1;
 			server->ready = 0;
 			res = false; /* don't process client data yet */
-			if (!sbuf_pause(&client->sbuf))
+			log_debug("varchange");
+			if (!mirrored && !sbuf_pause(&client->sbuf))
 				disconnect_client(client, true, "pause failed");
 		} else {
 			res = true;
 		}
-	} else {
+	} else if (!mirrored) {
+		/* don't pause for mirrors */
 		pause_client(client);
 		res = false;
 	}
@@ -695,7 +735,8 @@ static bool reuse_on_release(PgSocket *server)
 	bool res = true;
 	PgPool *pool = server->pool;
 	PgSocket *client = first_socket(&pool->waiting_client_list);
-	if (client) {
+	if (client && !pool->mirror) {
+		log_debug("activating from reuse_on_release");
 		activate_client(client);
 
 		/*
@@ -755,6 +796,7 @@ bool release_server(PgSocket *server)
 	switch (server->state) {
 	case SV_ACTIVE:
 		server->link->link = NULL;
+		server->link->mirror_link = NULL;
 		server->link = NULL;
 
 		if (*cf_server_reset_query && (cf_server_reset_query_always ||
@@ -808,8 +850,26 @@ bool release_server(PgSocket *server)
 	return true;
 }
 
+void disconnect_links(PgSocket *client, bool notify, const char *reason, ...)
+{
+	va_list ap;
+	va_start(ap, reason);
+	vdisconnect_server(client->link, notify, reason, ap);
+	vdisconnect_server(client->mirror_link, notify, reason, ap);
+	va_end(ap);
+}
+
 /* drop server connection */
 void disconnect_server(PgSocket *server, bool notify, const char *reason, ...)
+{
+	va_list ap;
+	va_start(ap, reason);
+	vdisconnect_server(server, notify, reason, ap);
+	va_end(ap);
+}
+
+/* wrapped internal variadic call */
+void vdisconnect_server(PgSocket *server, bool notify, const char *reason, va_list ap)
 {
 	PgPool *pool = server->pool;
 	PgSocket *client;
@@ -817,11 +877,8 @@ void disconnect_server(PgSocket *server, bool notify, const char *reason, ...)
 	int send_term = 1;
 	usec_t now = get_cached_time();
 	char buf[128];
-	va_list ap;
 
-	va_start(ap, reason);
 	vsnprintf(buf, sizeof(buf), reason, ap);
-	va_end(ap);
 	reason = buf;
 
 	if (cf_log_disconnections)
@@ -832,7 +889,9 @@ void disconnect_server(PgSocket *server, bool notify, const char *reason, ...)
 	case SV_ACTIVE:
 		client = server->link;
 		if (client) {
+			slog_debug(client, "forcing client disconnect");
 			client->link = NULL;
+			client->mirror_link = NULL;
 			server->link = NULL;
 			disconnect_client(client, true, "%s", reason);
 		}
@@ -920,6 +979,7 @@ void disconnect_client(PgSocket *client, bool notify, const char *reason, ...)
 			} else {
 				server->link = NULL;
 				client->link = NULL;
+				client->mirror_link = NULL;
 				disconnect_server(server, true, "unclean server");
 			}
 		}
@@ -976,10 +1036,13 @@ static void connect_server(struct PgSocket *server, const struct sockaddr *sa, i
 
 static void dns_callback(void *arg, const struct sockaddr *sa, int salen)
 {
-	struct PgSocket *server = arg;
+	struct DNSCallbackArg *dns_cb_arg = arg;
+	struct PgSocket *server = dns_cb_arg->server;
+	bool mirrored = dns_cb_arg->mirrored;
 	struct PgDatabase *db = server->pool->db;
 	struct sockaddr_in sa_in;
 	struct sockaddr_in6 sa_in6;
+	int port = mirrored ? db->mirror_port : db->port;
 
 	server->dns_token = NULL;
 
@@ -989,7 +1052,7 @@ static void dns_callback(void *arg, const struct sockaddr *sa, int salen)
 	} else if (sa->sa_family == AF_INET) {
 		char buf[64];
 		memcpy(&sa_in, sa, sizeof(sa_in));
-		sa_in.sin_port = htons(db->port);
+		sa_in.sin_port = htons(port);
 		sa = (struct sockaddr *)&sa_in;
 		salen = sizeof(sa_in);
 		slog_debug(server, "dns_callback: inet4: %s",
@@ -997,7 +1060,7 @@ static void dns_callback(void *arg, const struct sockaddr *sa, int salen)
 	} else if (sa->sa_family == AF_INET6) {
 		char buf[64];
 		memcpy(&sa_in6, sa, sizeof(sa_in6));
-		sa_in6.sin6_port = htons(db->port);
+		sa_in6.sin6_port = htons(port);
 		sa = (struct sockaddr *)&sa_in6;
 		salen = sizeof(sa_in6);
 		slog_debug(server, "dns_callback: inet6: %s",
@@ -1010,14 +1073,15 @@ static void dns_callback(void *arg, const struct sockaddr *sa, int salen)
 	connect_server(server, sa, salen);
 }
 
-static void dns_connect(struct PgSocket *server)
+static void dns_connect(struct PgSocket *server, bool mirrored)
 {
 	struct sockaddr_un sa_un;
 	struct sockaddr_in sa_in;
 	struct sockaddr_in6 sa_in6;
 	struct sockaddr *sa;
 	struct PgDatabase *db = server->pool->db;
-	const char *host = db->host;
+	const char *host = mirrored ? db->mirror_host : db->host;
+	int port = mirrored ? db->mirror_port : db->port;
 	const char *unix_dir;
 	int sa_len;
 	int res;
@@ -1032,25 +1096,25 @@ static void dns_connect(struct PgSocket *server)
 			return;
 		}
 		snprintf(sa_un.sun_path, sizeof(sa_un.sun_path),
-			 "%s/.s.PGSQL.%d", unix_dir, db->port);
+			 "%s/.s.PGSQL.%d", unix_dir, port);
 		slog_noise(server, "unix socket: %s", sa_un.sun_path);
 		sa = (struct sockaddr *)&sa_un;
 		sa_len = sizeof(sa_un);
 		res = 1;
 	} else if (strchr(host, ':')) {  /* assume IPv6 address on any : in addr */
-		slog_noise(server, "inet6 socket: %s", db->host);
+		slog_noise(server, "inet6 socket: %s", host);
 		memset(&sa_in6, 0, sizeof(sa_in6));
 		sa_in6.sin6_family = AF_INET6;
-		res = inet_pton(AF_INET6, db->host, &sa_in6.sin6_addr);
-		sa_in6.sin6_port = htons(db->port);
+		res = inet_pton(AF_INET6, host, &sa_in6.sin6_addr);
+		sa_in6.sin6_port = htons(port);
 		sa = (struct sockaddr *)&sa_in6;
 		sa_len = sizeof(sa_in6);
 	} else { /* else try IPv4 */
-		slog_noise(server, "inet socket: %s", db->host);
+		slog_noise(server, "inet socket: %s", host);
 		memset(&sa_in, 0, sizeof(sa_in));
 		sa_in.sin_family = AF_INET;
-		res = inet_pton(AF_INET, db->host, &sa_in.sin_addr);
-		sa_in.sin_port = htons(db->port);
+		res = inet_pton(AF_INET, host, &sa_in.sin_addr);
+		sa_in.sin_port = htons(port);
 		sa = (struct sockaddr *)&sa_in;
 		sa_len = sizeof(sa_in);
 	}
@@ -1058,9 +1122,10 @@ static void dns_connect(struct PgSocket *server)
 	/* if simple parse failed, use DNS */
 	if (res != 1) {
 		struct DNSToken *tk;
-		slog_noise(server, "dns socket: %s", db->host);
+		slog_noise(server, "dns socket: %s", host);
 		/* launch dns lookup */
-		tk = adns_resolve(adns, db->host, dns_callback, server);
+		struct DNSCallbackArg dns_cb_a = {server, mirrored};
+		tk = adns_resolve(adns, host, dns_callback, &dns_cb_a);
 		if (tk)
 			server->dns_token = tk;
 		return;
@@ -1133,7 +1198,6 @@ bool evict_user_connection(PgUser *user)
 /* the pool needs new connection, if possible */
 void launch_new_connection(PgPool *pool)
 {
-	PgSocket *server;
 	int max;
 
 	/* allow only small number of connection attempts at a time */
@@ -1202,10 +1266,15 @@ allow_new:
 		}
 	}
 
+	connect_new_server(pool, pool->db);
+}
+
+void connect_new_server(PgPool *pool, PgDatabase *db) {
 	/* get free conn object */
-	server = slab_alloc(server_cache);
+	PgSocket *server = slab_alloc(server_cache);
+
 	if (!server) {
-		log_debug("launch_new_connection: no memory");
+		log_debug("connect_new_server: no memory");
 		return;
 	}
 
@@ -1215,10 +1284,15 @@ allow_new:
 	server->connect_time = get_cached_time();
 	pool->last_connect_time = get_cached_time();
 	change_server_state(server, SV_LOGIN);
-	pool->db->connection_count++;
-	pool->user->connection_count++;
 
-	dns_connect(server);
+	if (pool->mirror) {
+		dns_connect(server, true);
+	} else {
+		/* only increment connection count for the non-mirror server connections */
+		pool->db->connection_count++;
+		pool->user->connection_count++;
+		dns_connect(server, false);
+	}
 }
 
 /* new client connection attempt */
@@ -1477,7 +1551,7 @@ bool use_server_socket(int fd, PgAddr *addr,
 	if (!user && db->auth_user)
 		user = add_db_user(db, username, password);
 
-	pool = get_pool(db, user);
+	pool = get_pool(db, user, false);
 	if (!pool)
 		return false;
 

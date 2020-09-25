@@ -100,10 +100,17 @@ static void start_auth_query(PgSocket *client, const char *username)
 	PktBuf *buf;
 
 	/* have to fetch user info from db */
-	client->pool = get_pool(client->db, client->db->auth_user);
-	if (!find_server(client)) {
+	client->pool = get_pool(client->db, client->db->auth_user, false);
+	/* attempt to load the mirror pool */
+	client->mirror_pool = get_pool(client->db, client->db->auth_user, true);
+
+	if (!find_server(client, false)) {
 		client->wait_for_user_conn = true;
 		return;
+	}
+	/* we optimistically assume there will also be a corresponding mirror */
+	if (!find_server(client, true)) {
+		slog_noise(client, "unable to find mirrored server");
 	}
 	slog_noise(client, "doing auth_conn query");
 	client->wait_for_user_conn = false;
@@ -130,6 +137,7 @@ static void start_auth_query(PgSocket *client, const char *username)
 	if (!res)
 		disconnect_server(client->link, false, "unable to send login query");
 }
+
 
 static bool login_via_cert(PgSocket *client)
 {
@@ -185,7 +193,8 @@ static bool finish_set_pool(PgSocket *client, bool takeover)
 	}
 
 	if (!user->mock_auth) {
-		client->pool = get_pool(client->db, user);
+		client->pool = get_pool(client->db, user, false);
+		client->mirror_pool = get_pool(client->db, user, true);
 		if (!client->pool) {
 			disconnect_client(client, true, "no memory for pool");
 			return false;
@@ -204,7 +213,7 @@ static bool finish_set_pool(PgSocket *client, bool takeover)
 		}
 	}
 
-	if (!check_fast_fail(client))
+	if (!check_fast_fail(client, false))
 		return false;
 
 	if (takeover)
@@ -363,46 +372,45 @@ bool handle_auth_query_response(PgSocket *client, PktHdr *pkt) {
 	uint32_t length;
 	const char *username, *password;
 	PgUser user;
-	PgSocket *server = client->link;
 
 	switch(pkt->type) {
 	case 'T':	/* RowDescription */
 		if (!mbuf_get_uint16be(&pkt->data, &columns)) {
-			disconnect_server(server, false, "bad packet");
+			disconnect_links(client, false, "bad packet");
 			return false;
 		}
 		if (columns != 2u) {
-			disconnect_server(server, false, "expected 2 columns from login query, not %hu", columns);
+			disconnect_links(client, false, "expected 2 columns from login query, not %hu", columns);
 			return false;
 		}
 		break;
 	case 'D':	/* DataRow */
 		memset(&user, 0, sizeof(user));
 		if (!mbuf_get_uint16be(&pkt->data, &columns)) {
-			disconnect_server(server, false, "bad packet");
+			disconnect_links(client, false, "bad packet");
 			return false;
 		}
 		if (columns != 2u) {
-			disconnect_server(server, false, "expected 2 columns from login query, not %hu", columns);
+			disconnect_links(client, false, "expected 2 columns from login query, not %hu", columns);
 			return false;
 		}
 		if (!mbuf_get_uint32be(&pkt->data, &length)) {
-			disconnect_server(server, false, "bad packet");
+			disconnect_links(client, false, "bad packet");
 			return false;
 		}
 		if (length == (uint32_t)-1) {
-			disconnect_server(server, false, "login query response contained null user name");
+			disconnect_links(client, false, "login query response contained null user name");
 			return false;
 		}
 		if (!mbuf_get_chars(&pkt->data, length, &username)) {
-			disconnect_server(server, false, "bad packet");
+			disconnect_links(client, false, "bad packet");
 			return false;
 		}
 		if (sizeof(user.name) - 1 < length)
 			length = sizeof(user.name) - 1;
 		memcpy(user.name, username, length);
 		if (!mbuf_get_uint32be(&pkt->data, &length)) {
-			disconnect_server(server, false, "bad packet");
+			disconnect_links(client, false, "bad packet");
 			return false;
 		}
 		if (length == (uint32_t)-1) {
@@ -414,7 +422,7 @@ bool handle_auth_query_response(PgSocket *client, PktHdr *pkt) {
 			length = 3;
 		} else {
 			if (!mbuf_get_chars(&pkt->data, length, &password)) {
-				disconnect_server(server, false, "bad packet");
+				disconnect_links(client, false, "bad packet");
 				return false;
 			}
 		}
@@ -424,7 +432,7 @@ bool handle_auth_query_response(PgSocket *client, PktHdr *pkt) {
 
 		client->auth_user = add_db_user(client->db, user.name, user.passwd);
 		if (!client->auth_user) {
-			disconnect_server(server, false, "unable to allocate new user for auth");
+			disconnect_links(client, false, "unable to allocate new user for auth");
 			return false;
 		}
 		break;
@@ -440,6 +448,7 @@ bool handle_auth_query_response(PgSocket *client, PktHdr *pkt) {
 		break;
 	case 'Z':	/* ReadyForQuery */
 		sbuf_prepare_skip(&client->link->sbuf, pkt->len);
+		sbuf_prepare_skip(&client->mirror_link->sbuf, pkt->len);
 		if (!client->auth_user) {
 			if (cf_log_connections)
 				slog_info(client, "login failed: db=%s", client->db->name);
@@ -458,6 +467,7 @@ bool handle_auth_query_response(PgSocket *client, PktHdr *pkt) {
 		} else {
 			slog_noise(client, "auth query complete");
 			client->link->resetting = true;
+			client->mirror_link->resetting = true;
 			sbuf_continue(&client->sbuf);
 		}
 		/*
@@ -465,14 +475,15 @@ bool handle_auth_query_response(PgSocket *client, PktHdr *pkt) {
 		 * way down in their bowels of other callbacks. so check that, and
 		 * return appropriately (similar to reuse_on_release)
 		 */
-		if (server->state == SV_FREE || server->state == SV_JUSTFREE)
+		if (client->link->state == SV_FREE || client->link->state == SV_JUSTFREE)
 			return false;
 		return true;
 	default:
-		disconnect_server(server, false, "unexpected response from login query");
+		disconnect_links(client, false, "unexpected response from login query");
 		return false;
 	}
-	sbuf_prepare_skip(&server->sbuf, pkt->len);
+	sbuf_prepare_skip(&client->link->sbuf, pkt->len);
+	sbuf_prepare_skip(&client->mirror_link->sbuf, pkt->len);
 	return true;
 }
 
@@ -850,7 +861,11 @@ static bool handle_client_startup(PgSocket *client, PktHdr *pkt)
 static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 {
 	SBuf *sbuf = &client->sbuf;
+	SBuf *mirror_sbuf = NULL;
 	int rfq_delta = 0;
+	bool found_mirror = false;
+
+	slog_debug(client, "handle_client_work pkt: %c", pkt_desc(pkt));
 
 	switch (pkt->type) {
 
@@ -904,21 +919,29 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	/* update stats */
 	if (!client->query_start) {
 		client->pool->stats.query_count++;
+		if (client->mirror_pool)
+			client->mirror_pool->stats.query_count++;
 		client->query_start = get_cached_time();
 	}
 
 	/* remember timestamp of the first query in a transaction */
 	if (!client->xact_start) {
 		client->pool->stats.xact_count++;
+		if (client->mirror_pool)
+			client->mirror_pool->stats.xact_count++;
 		client->xact_start = client->query_start;
 	}
 
 	if (client->pool->db->admin)
 		return admin_handle_client(client, pkt);
 
+	/* attempt to find mirrored server first */
+	found_mirror = client->mirror_pool && find_server(client, true);
+
 	/* acquire server */
-	if (!find_server(client))
+	if (!find_server(client, false)) {
 		return false;
+	}
 
 	/* postpone rfq change until certain that client will not be paused */
 	if (rfq_delta) {
@@ -931,8 +954,24 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	client->link->ready = false;
 	client->link->idle_tx = false;
 
+	if (client->mirror_pool) {
+		/* acquire mirrored server, if necessary */
+		if (!found_mirror) {
+			slog_error(client, "unable to acquire mirrored server");
+			/* but do not return false here; just keep on truckin' */
+		} else {
+			mirror_sbuf = &client->mirror_link->sbuf;
+
+			client->mirror_pool->stats.client_bytes += pkt->len;
+
+			/* tag the server as dirty */
+			client->mirror_link->ready = false;
+			client->mirror_link->idle_tx = false;
+		}
+	}
+
 	/* forward the packet */
-	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
+	sbuf_prepare_send(sbuf, &client->link->sbuf, mirror_sbuf, pkt->len);
 
 	return true;
 }

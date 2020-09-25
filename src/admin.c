@@ -1561,7 +1561,7 @@ void admin_setup(void)
 		die("no mem on startup - cannot alloc pgbouncer user");
 
 	/* fake pool */
-	pool = get_pool(db, db->forced_user);
+	pool = get_pool(db, db->forced_user, false);
 	if (!pool)
 		die("cannot create admin pool?");
 	admin_pool = pool;

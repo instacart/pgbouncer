@@ -316,7 +316,7 @@ bool sbuf_close(SBuf *sbuf)
 }
 
 /* proto_fn tells to send some bytes to socket */
-void sbuf_prepare_send(SBuf *sbuf, SBuf *dst, unsigned amount)
+void sbuf_prepare_send(SBuf *sbuf, SBuf *dst, SBuf *mirror_dst, unsigned amount)
 {
 	AssertActive(sbuf);
 	Assert(sbuf->pkt_remain == 0);
@@ -326,6 +326,7 @@ void sbuf_prepare_send(SBuf *sbuf, SBuf *dst, unsigned amount)
 	sbuf->pkt_action = ACT_SEND;
 	sbuf->pkt_remain = amount;
 	sbuf->dst = dst;
+	sbuf->mirror_dst = mirror_dst;
 }
 
 /* proto_fn tells to skip some amount of bytes */
@@ -527,6 +528,11 @@ try_more:
 	//res = iobuf_send_pending(io, sbuf->dst->sock);
 	res = sbuf_op_send(sbuf->dst, io->buf + io->done_pos, avail);
 	if (res > 0) {
+		/* attempt to mirror the send */
+		if (sbuf->mirror_dst) {
+			/* ignore write errors for mirrors */
+			sbuf_op_send(sbuf->mirror_dst, io->buf + io->done_pos, avail);
+		}
 		io->done_pos += res;
 	} else if (res < 0) {
 		if (errno == EAGAIN) {

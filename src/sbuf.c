@@ -25,6 +25,7 @@
  */
 
 #include "bouncer.h"
+#include <pthread.h>
 
 #ifdef USUAL_LIBSSL_FOR_TLS
 #define USE_TLS
@@ -77,9 +78,12 @@ static bool sbuf_call_proto(SBuf *sbuf, int event) /* _MUSTCHECK */;
 static bool sbuf_actual_recv(SBuf *sbuf, size_t len)  _MUSTCHECK;
 static bool sbuf_after_connect_check(SBuf *sbuf)  _MUSTCHECK;
 static bool handle_tls_handshake(SBuf *sbuf) /* _MUSTCHECK */;
+static void sbuf_thread_send(SBuf *sbuf, void *data, size_t len);
+static void *sbuf_pthread_worker(void *arg);
 
-/* regular I/O */
-static ssize_t raw_sbufio_recv(struct SBuf *sbuf, void *dst, size_t len);
+		/* regular I/O */
+		static ssize_t
+		raw_sbufio_recv(struct SBuf *sbuf, void *dst, size_t len);
 static ssize_t raw_sbufio_send(struct SBuf *sbuf, const void *data, size_t len);
 static int raw_sbufio_close(struct SBuf *sbuf);
 static const SBufIO raw_sbufio_ops = {
@@ -108,9 +112,42 @@ static void sbuf_tls_handshake_cb(evutil_socket_t fd, short flags, void *_sbuf);
 /* initialize SBuf with proto handler */
 void sbuf_init(SBuf *sbuf, sbuf_cb_t proto_fn)
 {
+	int rc;
+
 	memset(sbuf, 0, sizeof(SBuf));
 	sbuf->proto_cb = proto_fn;
 	sbuf->ops = &raw_sbufio_ops;
+}
+
+void sbuf_init_mirror_thread(SBuf *sbuf)
+{
+	int rc;
+
+	if (sbuf->mirror_initialized)
+		return;
+
+	mbuf_init_dynamic(&sbuf->mirror_buf);
+
+	/* on the first call, initialize our thread and kick it off */
+	rc = pthread_mutex_init(&sbuf->mirror_buf_writer, NULL);
+	if (rc != 0) {
+		log_error("failed to initialize a mutex for mirrored writing: %s", strerror(errno));
+		return;
+	}
+
+	rc = pthread_cond_init(&sbuf->mirror_data_available, NULL);
+	if (rc != 0) {
+		log_error("failed to initialize a condition variable: %s", strerror(errno));
+		return;
+	}
+
+	rc = pthread_create(&sbuf->mirror_pthread, NULL, &sbuf_pthread_worker, sbuf);
+	if (rc != 0) {
+		log_error("failed to create the mirror thread: %s", strerror(errno));
+		return;
+	}
+
+	sbuf->mirror_initialized = true;
 }
 
 /* got new socket from accept() */
@@ -509,6 +546,7 @@ static bool sbuf_send_pending(SBuf *sbuf)
 	int avail;
 	ssize_t res;
 	IOBuf *io = sbuf->io;
+	clock_t start, end;
 
 	AssertActive(sbuf);
 	Assert(sbuf->dst || iobuf_amount_pending(io) == 0);
@@ -526,12 +564,22 @@ try_more:
 
 	/* actually send it */
 	//res = iobuf_send_pending(io, sbuf->dst->sock);
+	start = clock();
 	res = sbuf_op_send(sbuf->dst, io->buf + io->done_pos, avail);
+	end = clock();
+	log_debug("first send: %f", ((double) (end - start)) / CLOCKS_PER_SEC);
 	if (res > 0) {
 		/* attempt to mirror the send */
 		if (sbuf->mirror_dst) {
 			/* ignore write errors for mirrors */
+			start = clock();
+			#ifdef FALSE
 			sbuf_op_send(sbuf->mirror_dst, io->buf + io->done_pos, avail);
+			#else
+			sbuf_thread_send(sbuf, io->buf + io->done_pos, avail);
+			#endif
+			end = clock();
+			log_debug("second send: %f", ((double)(end - start)) / CLOCKS_PER_SEC);
 		}
 		io->done_pos += res;
 	} else if (res < 0) {
@@ -553,6 +601,48 @@ try_more:
 	 * To be sure, let's run into EAGAIN.
 	 */
 	goto try_more;
+}
+
+static void sbuf_thread_send(SBuf *sbuf, void *data, size_t len)
+{
+	int rc;
+
+	pthread_mutex_lock(&sbuf->mirror_buf_writer);
+	mbuf_write(&sbuf->mirror_buf, data, len);
+	pthread_mutex_unlock(&sbuf->mirror_buf_writer);
+	pthread_cond_signal(&sbuf->mirror_data_available);
+}
+
+static void *sbuf_pthread_worker(void *arg)
+{
+	SBuf *sbuf = (SBuf *)arg;
+	struct MBuf mbuf;
+	unsigned avail;
+	int res;
+
+	mbuf_init_dynamic(&mbuf);
+
+	while(1) {
+		pthread_cond_wait(&sbuf->mirror_data_available, &sbuf->mirror_buf_writer);
+		avail = mbuf_avail_for_read(&sbuf->mirror_buf);
+
+		if (avail > 0)
+			mbuf_write(&mbuf, &sbuf->mirror_buf.data, mbuf_avail_for_read(&sbuf->mirror_buf));
+
+		pthread_mutex_unlock(&sbuf->mirror_buf_writer);
+
+		if (avail > 0) {
+			res = safe_send(sbuf->mirror_dst->sock, (void *)mbuf.data + mbuf.read_pos, avail, 0);
+			mbuf.read_pos += res;
+
+			log_debug("available to read: %d", mbuf_avail_for_read(&mbuf));
+
+			if (mbuf_avail_for_read(&mbuf) == 0)
+			{
+				mbuf_rewind_writer(&mbuf);
+			}
+		}
+	}
 }
 
 /* process as much data as possible */

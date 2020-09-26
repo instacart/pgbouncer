@@ -82,8 +82,14 @@ struct SBuf {
 	SBuf *mirror_dst;		/* mirror target for current packet (if existing) */
 
 	IOBuf *io;		/* data buffer, lazily allocated */
+	struct MBuf mirror_buf;		/* data buffer for mirrored data */
 
-	const SBufIO *ops;	/* normal vs. TLS */
+	pthread_mutex_t mirror_buf_writer;		/* lock for writing to the mirror buf */
+	pthread_cond_t mirror_data_available;		/* condition for if data is available */
+	pthread_t mirror_pthread;
+	bool mirror_initialized;
+
+	const SBufIO *ops; /* normal vs. TLS */
 	struct tls *tls;	/* TLS context */
 	const char *tls_host;	/* target hostname */
 };
@@ -91,7 +97,8 @@ struct SBuf {
 #define sbuf_socket(sbuf) ((sbuf)->sock)
 
 void sbuf_init(SBuf *sbuf, sbuf_cb_t proto_fn);
-bool sbuf_accept(SBuf *sbuf, int read_sock, bool is_unix)  _MUSTCHECK;
+void sbuf_init_mirror_thread(SBuf *sbuf);
+bool sbuf_accept(SBuf *sbuf, int read_sock, bool is_unix) _MUSTCHECK;
 bool sbuf_connect(SBuf *sbuf, const struct sockaddr *sa, socklen_t sa_len, time_t timeout_sec)  _MUSTCHECK;
 
 void sbuf_tls_setup(void);

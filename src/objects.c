@@ -1013,7 +1013,7 @@ void disconnect_client(PgSocket *client, bool notify, const char *reason, ...)
  * Connection creation utilities
  */
 
-static void connect_server(struct PgSocket *server, const struct sockaddr *sa, int salen)
+static void connect_server(struct PgSocket *server, const struct sockaddr *sa, int salen, bool mirrored)
 {
 	bool res;
 
@@ -1070,7 +1070,7 @@ static void dns_callback(void *arg, const struct sockaddr *sa, int salen)
 		return;
 	}
 
-	connect_server(server, sa, salen);
+	connect_server(server, sa, salen, mirrored);
 }
 
 static void dns_connect(struct PgSocket *server, bool mirrored)
@@ -1131,7 +1131,7 @@ static void dns_connect(struct PgSocket *server, bool mirrored)
 		return;
 	}
 
-	connect_server(server, sa, sa_len);
+	connect_server(server, sa, sa_len, mirrored);
 }
 
 PgSocket *compare_connections_by_time(PgSocket *lhs, PgSocket *rhs)

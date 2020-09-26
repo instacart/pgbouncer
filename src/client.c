@@ -964,6 +964,10 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 
 			client->mirror_pool->stats.client_bytes += pkt->len;
 
+			/* initialize the mirror thread, if necessary */
+			if (mirror_sbuf != NULL)
+				sbuf_init_mirror_thread(mirror_sbuf);
+
 			/* tag the server as dirty */
 			client->mirror_link->ready = false;
 			client->mirror_link->idle_tx = false;

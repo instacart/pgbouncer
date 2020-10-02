@@ -25,7 +25,7 @@
 void log_client_pkt(PktHdr *pkt, const char *fname)
 {
   int tmp_fd, fd;
-  char tmp_fname[strlen(fname)+5];
+  char tmp_fname[strlen(fname)+6];
   char pkt_sep[] = {'\x19'};
   snprintf(tmp_fname, strlen(fname) + 6, "%s.lock", fname);
 

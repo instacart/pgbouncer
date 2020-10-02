@@ -23,6 +23,7 @@
 #include "bouncer.h"
 #include "pam.h"
 #include "scram.h"
+#include "logging.h"
 
 #include <usual/pgutil.h>
 
@@ -851,6 +852,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 {
 	SBuf *sbuf = &client->sbuf;
 	int rfq_delta = 0;
+	bool log = true;
 
 	switch (pkt->type) {
 
@@ -870,6 +872,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	/* request immediate response from server */
 	case 'S':		/* Sync */
 		rfq_delta++;
+		log = false;
 		break;
 	case 'H':		/* Flush */
 		break;
@@ -933,6 +936,11 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 
 	/* forward the packet */
 	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
+
+	/* log the query, if needed */
+	if (log) {
+		log_client_pkt(pkt, "/tmp/pktlog");
+	}
 
 	return true;
 }

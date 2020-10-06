@@ -14,4 +14,8 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-static void log_client_pkt(PktHdr *pkt, const char *fname);
+void log_client_pkt_cb(evutil_socket_t fd, short flags, void *arg);
+void log_client_pkt(PgSocket *client, PktHdr *pkt, const char *fname);
+void log_shutdown(void);
+void log_init(void);
+void log_pkt_to_buffer(PktHdr*);

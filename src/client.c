@@ -852,7 +852,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 {
 	SBuf *sbuf = &client->sbuf;
 	int rfq_delta = 0;
-	bool log = true;
 
 	switch (pkt->type) {
 
@@ -872,7 +871,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	/* request immediate response from server */
 	case 'S':		/* Sync */
 		rfq_delta++;
-		log = false;
 		break;
 	case 'H':		/* Flush */
 		break;
@@ -938,8 +936,8 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
 
 	/* log the query, if needed */
-	if (log) {
-		log_client_pkt(pkt, "/tmp/pktlog");
+	if (cf_log_packets) {
+		log_pkt_to_buffer(pkt);
 	}
 
 	return true;

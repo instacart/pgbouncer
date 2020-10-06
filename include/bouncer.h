@@ -122,6 +122,7 @@ extern int cf_sbuf_len;
 #include "janitor.h"
 #include "hba.h"
 #include "pam.h"
+#include "logging.h"
 
 #ifndef WIN32
 #define DEFAULT_UNIX_SOCKET_DIR "/tmp"
@@ -526,6 +527,7 @@ extern int cf_tcp_defer_accept;
 extern int cf_tcp_user_timeout;
 
 extern int cf_log_connections;
+extern int cf_log_packets;
 extern int cf_log_disconnections;
 extern int cf_log_pooler_errors;
 extern int cf_application_name_add_host;

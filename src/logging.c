@@ -21,12 +21,14 @@
 #include "bouncer.h"
 #include <sys/file.h>
 
-#define LOG_BUFFER_SIZE 1024 * 1024 * 1024 /* 1 MB */
+#define LOG_BUFFER_SIZE 1024 * 1024 /* 1 MB */
+#define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
 
 /* do full maintenance 10x per second */
 static struct timeval buffer_drain_period = {0, USEC / 10};
 static struct event buffer_drain_ev;
 
+/* The buffer */
 static char *buf;
 static size_t len;
 
@@ -39,6 +41,12 @@ void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg);
 void log_init() {
   buf = malloc(LOG_BUFFER_SIZE);
   len = 0;
+
+  /* Touch the logfile */
+  int fd = open(cf_log_packets_file, O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
+  if (fd != -1) {
+    close(fd);
+  }
 
   /* launch buffer flusher */
   event_assign(&buffer_drain_ev, pgb_event_base, -1, EV_PERSIST, log_buffer_flush_cb, NULL);
@@ -90,15 +98,14 @@ void log_pkt_to_buffer(PktHdr *pkt) {
  */
 static void log_flush_buffer() {
   int tmp_fd, fd;
-  const char *fname = "/tmp/pktlog";
-  char tmp_fname[strlen(fname)+6];
-  snprintf(tmp_fname, strlen(fname) + 6, "%s.lock", fname);
+  char tmp_fname[strlen(cf_log_packets_file)+6];
+  snprintf(tmp_fname, strlen(cf_log_packets_file) + 6, "%s.lock", cf_log_packets_file);
 
   /* acquire a lock on our lock file */
-  tmp_fd = open(tmp_fname, O_CREAT | O_EXLOCK, S_IWUSR | S_IRUSR);
+  tmp_fd = open(tmp_fname, O_CREAT | O_SHLOCK, S_IWUSR | S_IRUSR);
 
   /* open our log file append only */
-  fd = open(fname, O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
+  fd = open(cf_log_packets_file, O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
 
   /* "client id" */
   // write(fd, &client->query_start, 8); /* 8 bytes 64 bit integer */
@@ -111,6 +118,8 @@ static void log_flush_buffer() {
   close(fd);
   close(tmp_fd);
 
+  log_info("Flushed %lu bytes to packet log buffer", len);
+
   /* Clear the buffer */
   memset(buf, 0, len);
   len = 0;
@@ -121,7 +130,18 @@ static void log_flush_buffer() {
  */
 void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg) {
   if (len > 0) {
-    log_info("Flushed packet log buffer.");
+    struct stat info;
+
+    if (stat(cf_log_packets_file, &info)) {
+      log_info("Could not stat %s logfile. Dropping packet logging on the floor.", cf_log_packets_file);
+      return;
+    }
+
+    if (info.st_size > MAX_LOG_FILE_SIZE) {
+      log_info("Packet log file %s is %lld bytes which is too large. Dropping packet logging on the floor.", cf_log_packets_file, info.st_size);
+      return;
+    }
+
     log_flush_buffer();
   }
 }

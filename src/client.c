@@ -936,9 +936,8 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
 
 	/* log the query, if needed */
-	if (cf_log_packets) {
+	if (cf_log_packets)
 		log_pkt_to_buffer(pkt);
-	}
 
 	return true;
 }

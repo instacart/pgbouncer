@@ -937,7 +937,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 
 	/* log the query, if needed */
 	if (cf_log_packets)
-		log_pkt_to_buffer(pkt);
+		log_pkt_to_buffer(pkt, client);
 
 	return true;
 }

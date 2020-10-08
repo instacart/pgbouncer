@@ -16,4 +16,4 @@
 
 void log_shutdown(void);
 void log_init(void);
-void log_pkt_to_buffer(PktHdr*);
+void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client);

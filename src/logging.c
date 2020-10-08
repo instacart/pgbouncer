@@ -70,9 +70,9 @@ void log_shutdown() {
 /*
  * Log packet into the buffer.
  */
-void log_pkt_to_buffer(PktHdr *pkt) {
+void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   /* Buffer full, drop the packet logging on the floor */
-  if (len + pkt->len + 1 > LOG_BUFFER_SIZE) {
+  if (len + pkt->len + 5 > LOG_BUFFER_SIZE) {
     return;
   }
 
@@ -87,10 +87,12 @@ void log_pkt_to_buffer(PktHdr *pkt) {
       return;
   }
 
-  /* Copy the packet into our buffer */
-  memcpy(buf + len, pkt->data.data, pkt->len);
-  buf[len + pkt->len] = '\x19';
-  len += (pkt->len + 1);
+  /* Copy the packet into our buffer, along with client_id & delimeter. */
+  uint32_t net_ci = htonl(client->client_id);
+  memcpy(buf + len, &net_ci, 4);
+  memcpy(buf + len + 4, pkt->data.data, pkt->len);
+  buf[len + 4 + pkt->len] = '\x19';
+  len += (pkt->len + 5);
 }
 
 /*
@@ -106,9 +108,6 @@ static void log_flush_buffer() {
 
   /* open our log file append only */
   fd = open(cf_log_packets_file, O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
-
-  /* "client id" */
-  // write(fd, &client->query_start, 8); /* 8 bytes 64 bit integer */
 
   /* flush the buffer */
   write(fd, buf, len);
@@ -133,12 +132,12 @@ void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg) {
     struct stat info;
 
     if (stat(cf_log_packets_file, &info)) {
-      log_info("Could not stat %s logfile. Dropping packet logging on the floor.", cf_log_packets_file);
+      log_info("Could not stat %s logfile. Dropping packet logging on the floor", cf_log_packets_file);
       return;
     }
 
     if (info.st_size > MAX_LOG_FILE_SIZE) {
-      log_info("Packet log file %s is %lld bytes which is too large. Dropping packet logging on the floor.", cf_log_packets_file, info.st_size);
+      log_info("Packet log file %s is %lld bytes which is too large. Dropping packet logging on the floor", cf_log_packets_file, info.st_size);
       return;
     }
 

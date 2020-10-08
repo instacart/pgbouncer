@@ -812,7 +812,8 @@ static void cleanup(void)
 	pktbuf_cleanup();
 
 	reset_logging();
-	log_shutdown();
+	if (cf_log_packets)
+		log_shutdown();
 
 	xfree(&cf_username);
 	xfree(&cf_config_file);

@@ -368,6 +368,7 @@ struct PgDatabase {
  * ->state corresponds to various lists the struct can be at.
  */
 struct PgSocket {
+	uint32_t client_id; /* A "unique" id of the client */
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
 	PgPool *pool;		/* parent pool, if NULL not yet assigned */

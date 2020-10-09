@@ -21,7 +21,6 @@
 #include "bouncer.h"
 
 #include <sys/file.h>
-#include <usual/psrandom.h>
 #include <errno.h>
 
 #define LOG_BUFFER_SIZE 1024 * 1024 /* 1 MB */

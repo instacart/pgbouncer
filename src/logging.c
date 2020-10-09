@@ -42,7 +42,13 @@ void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg);
  */
 void log_init() {
   /* Allocate the buffer */
+  if (buf != NULL) {
+    log_info("Packet logging already initialized");
+    return;
+  }
+
   buf = malloc(LOG_BUFFER_SIZE);
+  memset(buf, 0, LOG_BUFFER_SIZE);
   len = 0;
 
   /* Flush the buffer every .1 of a second */
@@ -80,7 +86,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * pkt->len = packet size
    * + 5 bytes of metadata
    */
-  if (len + pkt->len + 5 > LOG_BUFFER_SIZE) {
+  if (len + pkt->len + sizeof(uint32_t) > LOG_BUFFER_SIZE) {
     return;
   }
 
@@ -111,9 +117,9 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * delimiter - 1 byte, 0x19 (EM)
    **/
   uint32_t net_ci = htonl(client->client_id);
-  memcpy(buf + len, &net_ci, 4);
-  memcpy(buf + len + 4, pkt->data.data, pkt->len);
-  buf[len + 4 + pkt->len] = '\x19';
+  memcpy(buf + len, &net_ci, sizeof(uint32_t));
+  memcpy(buf + len + sizeof(uint32_t), pkt->data.data, pkt->len);
+  buf[len + sizeof(uint32_t) + pkt->len] = '\x19';
   len += (pkt->len + 5);
 }
 
@@ -141,6 +147,10 @@ static void log_flush_buffer() {
 
   /* Open the log file in append mode */
   fd = open(cf_log_packets_file, O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
+  if (fd == -1) {
+    log_info("Could not open packet log file: %s", strerror(errno));
+    return;
+  }
 
   /* Flush the packets to the log file */
   write(fd, buf, len);

@@ -19,7 +19,10 @@
  */
 
 #include "bouncer.h"
+
 #include <sys/file.h>
+#include <usual/psrandom.h>
+#include <errno.h>
 
 #define LOG_BUFFER_SIZE 1024 * 1024 /* 1 MB */
 #define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
@@ -39,20 +42,15 @@ void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg);
  * Initialize the packet logger.
  */
 void log_init() {
+  /* Allocate the buffer */
   buf = malloc(LOG_BUFFER_SIZE);
   len = 0;
 
-  /* Touch the logfile */
-  int fd = open(cf_log_packets_file, O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
-  if (fd != -1) {
-    close(fd);
-  }
-
-  /* launch buffer flusher */
+  /* Flush the buffer every .1 of a second */
   event_assign(&buffer_drain_ev, pgb_event_base, -1, EV_PERSIST, log_buffer_flush_cb, NULL);
   event_add(&buffer_drain_ev, &buffer_drain_period);
 
-  log_info("Packet logging initialized.");
+  log_info("Packet logging initialized");
 }
 
 
@@ -60,23 +58,40 @@ void log_init() {
  * Shutdown the packet logger.
  */
 void log_shutdown() {
-  log_flush_buffer(); /* Flush */
+  /* Flush the buffer */
+  log_flush_buffer();
+
+  /* Free mem */
   free(buf);
+  buf = NULL;
   len = 0;
 
-  log_info("Packet logging shut down.");
+  log_info("Packet logging shut down");
 }
 
 /*
  * Log packet into the buffer.
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
-  /* Buffer full, drop the packet logging on the floor */
+  /* Buffer full, drop the packet logging on the floor.
+   * No logging since this function is called very often.
+   * This would happen because the buffer isn't being drained, 
+   * which has a log line already.
+   *
+   * pkt->len = packet size
+   * + 5 bytes of metadata
+   */
   if (len + pkt->len + 5 > LOG_BUFFER_SIZE) {
     return;
   }
 
-  /* Log only supported packets */
+  /* Log only supported packets.
+   *
+   * P - prepared statement
+   * B - bind params to prepared statement
+   * E - execute prepared statement
+   * Q - query, execute immediately
+   */
   switch(pkt->type) {
     case 'E':
     case 'Q':
@@ -87,7 +102,15 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
       return;
   }
 
-  /* Copy the packet into our buffer, along with client_id & delimeter. */
+  /*
+   * Write the packet to the log file.
+   *
+   * Format:
+   *
+   * client_id - 4 bytes, unsigned
+   * packet    - pkt->len bytes, raw
+   * delimiter - 1 byte, 0x19 (EM)
+   **/
   uint32_t net_ci = htonl(client->client_id);
   memcpy(buf + len, &net_ci, 4);
   memcpy(buf + len + 4, pkt->data.data, pkt->len);
@@ -103,44 +126,74 @@ static void log_flush_buffer() {
   char tmp_fname[strlen(cf_log_packets_file)+6];
   snprintf(tmp_fname, strlen(cf_log_packets_file) + 6, "%s.lock", cf_log_packets_file);
 
-  /* acquire a lock on our lock file */
-  tmp_fd = open(tmp_fname, O_CREAT | O_SHLOCK, S_IWUSR | S_IRUSR);
+  /*
+   * Get a shared lock on a .lock file.
+   * The replayer takes an exclusive lock on this file and prevents
+   * us from opening up the file descriptor for the time it takes it to rename
+   * the file. This forces us to write to a new log file.
+   */
+  tmp_fd = open(tmp_fname, O_CREAT, S_IWUSR | S_IRUSR);
+  if (flock(tmp_fd, LOCK_SH | LOCK_NB) == -1) {
+    log_info("Could not acquire lock file for packet logging: %s", strerror(errno));
 
-  /* open our log file append only */
+    /* Try again in .1 of a second */
+    return;
+  }
+
+  /* Open the log file in append mode */
   fd = open(cf_log_packets_file, O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
 
-  /* flush the buffer */
+  /* Flush the packets to the log file */
   write(fd, buf, len);
 
-  /* close our file and release the lock */
+  /* Close the log file and release the lock file */
   fsync(fd);
   close(fd);
+  flock(tmp_fd, LOCK_UN);
   close(tmp_fd);
 
   log_info("Flushed %lu bytes to packet log buffer", len);
 
-  /* Clear the buffer */
+  /* Clear the buffer since it's an append buffer */
   memset(buf, 0, len);
   len = 0;
+}
+
+/*
+ * Touch the log file (or create it).
+ */
+static void log_touch() {
+  /* Touch the logfile */
+  int fd = open(cf_log_packets_file, O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
+  if (fd != -1) {
+    close(fd);
+  }
 }
 
 /*
  * Callback for the event loop.
  */
 void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg) {
-  if (len > 0) {
-    struct stat info;
-
-    if (stat(cf_log_packets_file, &info)) {
-      log_info("Could not stat %s logfile. Dropping packet logging on the floor", cf_log_packets_file);
-      return;
-    }
-
-    if (info.st_size > MAX_LOG_FILE_SIZE) {
-      log_info("Packet log file %s is %lld bytes which is too large. Dropping packet logging on the floor", cf_log_packets_file, info.st_size);
-      return;
-    }
-
-    log_flush_buffer();
+  /* Don't waste time on an empty buffer - no traffic on the bouncer */
+  if (len < 1) {
+    return;
   }
+
+  /* Check that the log file isn't too large */
+  struct stat info;
+
+  if (stat(cf_log_packets_file, &info)) {
+    if (info.st_size > MAX_LOG_FILE_SIZE) {
+      log_info("Dropping packet logging: packet log file %s is %lld bytes which is too large", cf_log_packets_file, info.st_size);
+      return;
+    }
+  }
+
+  /* No log file, the replayer is not doing it's job correctly */
+  else {
+    log_touch();
+  }
+
+  /* Flush packets to file */
+  log_flush_buffer();
 }

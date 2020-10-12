@@ -23,6 +23,7 @@
 #include "bouncer.h"
 #include "pam.h"
 #include "scram.h"
+#include "logging.h"
 
 #include <usual/pgutil.h>
 
@@ -933,6 +934,10 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 
 	/* forward the packet */
 	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
+
+	/* log the query, if needed */
+	if (cf_log_packets)
+		log_pkt_to_buffer(pkt, client);
 
 	return true;
 }

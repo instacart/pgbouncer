@@ -226,8 +226,8 @@ void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg) {
     log_shutdown();
   }
 
-  /* Flush packets to file */
-  else if (cf_log_packets_file) {
+  /* Handle enabled packet logging */
+  else if (cf_log_packets) {
     if (buf == NULL)
       log_init();
 
@@ -235,6 +235,7 @@ void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg) {
       log_flush_buffer();
   }
 
+  /* Handle packet logging being disabled */
   else {
     if (buf != NULL) {
       log_flush_buffer();

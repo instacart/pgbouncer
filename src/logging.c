@@ -43,7 +43,7 @@ void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg);
 /*
  * Flush the buffer every .1 of a second
  */
-void log_setup() {
+void log_setup(void) {
   if (event_assign(&buffer_drain_ev, pgb_event_base, -1, EV_PERSIST, log_buffer_flush_cb, NULL) == -1) {
     log_info("Could not assign event: %s", strerror(errno));
     return;

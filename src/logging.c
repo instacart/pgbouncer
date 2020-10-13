@@ -140,7 +140,7 @@ static void log_flush_buffer(void) {
     return;
   }
 
-  if (stat(cf_log_packets_file, &info)) {
+  if (stat(cf_log_packets_file, &info) != -1) {
     if (info.st_size > MAX_LOG_FILE_SIZE) {
       log_info("Dropping packet logging: packet log file %s is %lld bytes which is too large", cf_log_packets_file, info.st_size);
       return;

@@ -58,7 +58,7 @@ static void usage(const char *exe)
 }
 
 /* global libevent handle */
-struct event_base *pgb_event_base = NULL;
+struct event_base *pgb_event_base;
 
 /* async dns handler */
 struct DNSContext *adns;

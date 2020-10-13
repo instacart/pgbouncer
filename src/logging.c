@@ -36,24 +36,42 @@ static size_t len = 0;
 
 static void log_flush_buffer(void);
 static void log_touch(void);
+static void log_shutdown(void);
+static void log_init(void);
 void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg);
+
+/*
+ * Flush the buffer every .1 of a second
+ */
+void log_setup() {
+  if (event_assign(&buffer_drain_ev, pgb_event_base, -1, EV_PERSIST, log_buffer_flush_cb, NULL) == -1) {
+    log_info("Could not assign event: %s", strerror(errno));
+    return;
+  }
+
+  if (event_add(&buffer_drain_ev, &buffer_drain_period) == -1) {
+    log_info("Could not schedule event: %s", strerror(errno));
+    return;
+  }
+}
 
 /*
  * Initialize the packet logger.
  */
 void log_init(void) {
-  if (buf != NULL) {
+  if (buf != NULL)
     return;
-  }
 
   /* Allocate the buffer */
   buf = malloc(LOG_BUFFER_SIZE);
+
+  if (buf == NULL) {
+    log_info("Could not allocate packet logging buffer");
+    return;
+  }
+
   memset(buf, 0, LOG_BUFFER_SIZE);
   len = 0;
-
-  /* Flush the buffer every .1 of a second */
-  event_assign(&buffer_drain_ev, pgb_event_base, -1, EV_PERSIST, log_buffer_flush_cb, NULL);
-  event_add(&buffer_drain_ev, &buffer_drain_period);
 
   log_info("Packet logging initialized");
 }
@@ -62,13 +80,9 @@ void log_init(void) {
 /*
  * Shutdown the packet logger.
  */
-void log_shutdown(void) {
-  if (buf == NULL) {
+static void log_shutdown(void) {
+  if (buf == NULL)
     return;
-  }
-
-  /* Flush the buffer */
-  log_flush_buffer();
 
   /* Free mem */
   free(buf);
@@ -137,9 +151,8 @@ static void log_flush_buffer(void) {
   char tmp_fname[strlen(cf_log_packets_file)+6];
 
   /* Don't waste time on an empty buffer - no traffic on the bouncer */
-  if (len < 1) {
+  if (len < 1)
     return;
-  }
 
   if (stat(cf_log_packets_file, &info) != -1) {
     if (info.st_size > MAX_LOG_FILE_SIZE) {
@@ -207,6 +220,25 @@ static void log_touch(void) {
  * Callback for the event loop.
  */
 void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg) {
+  /* Handle shutdown (best-effort since we are not the only event) */
+  if (cf_shutdown) {
+    log_flush_buffer();
+    log_shutdown();
+  }
+
   /* Flush packets to file */
-  log_flush_buffer();
+  else if (cf_log_packets_file) {
+    if (buf == NULL)
+      log_init();
+
+    if (len > 0)
+      log_flush_buffer();
+  }
+
+  else {
+    if (buf != NULL) {
+      log_flush_buffer();
+      log_shutdown();
+    }
+  }
 }

@@ -14,6 +14,5 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-void log_shutdown(void);
-void log_init(void);
+void log_setup(void);
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client);

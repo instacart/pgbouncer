@@ -430,12 +430,6 @@ void load_config(void)
 	/* reopen logfile */
 	if (main_config.loaded)
 		reset_logging();
-
-	/* Start/stop packet logging */
-	if (cf_log_packets)
-		log_init();
-	else
-		log_shutdown();
 }
 
 /*
@@ -818,8 +812,6 @@ static void cleanup(void)
 	pktbuf_cleanup();
 
 	reset_logging();
-	if (cf_log_packets)
-		log_shutdown();
 
 	xfree(&cf_username);
 	xfree(&cf_config_file);
@@ -971,8 +963,7 @@ int main(int argc, char *argv[])
 	dns_setup();
 	signal_setup();
 	janitor_setup();
-	if (cf_log_packets)
-		log_init();
+	log_setup();
 	stats_setup();
 
 	pam_init();

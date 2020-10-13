@@ -655,8 +655,6 @@ static void do_full_maint(evutil_socket_t sock, short flags, void *arg)
 		log_info("server connections dropped, exiting");
 		cf_shutdown = 2;
 		event_base_loopbreak(pgb_event_base);
-		if (cf_log_packets)
-			log_shutdown();
 		return;
 	}
 

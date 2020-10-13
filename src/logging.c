@@ -82,6 +82,7 @@ void log_shutdown(void) {
  * Log packet into the buffer.
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
+  uint32_t net_ci;
   /* Buffer full, drop the packet logging on the floor.
    * No logging since this function is called very often.
    * This would happen because the buffer isn't being drained, 
@@ -120,7 +121,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * packet    - pkt->len bytes, raw
    * delimiter - 1 byte, 0x19 (EM)
    **/
-  uint32_t net_ci = htonl(client->client_id);
+  net_ci = htonl(client->client_id);
   memcpy(buf + len, &net_ci, sizeof(uint32_t));
   memcpy(buf + len + sizeof(uint32_t), pkt->data.data, pkt->len);
   buf[len + sizeof(uint32_t) + pkt->len] = '\x19';

@@ -149,6 +149,7 @@ static void log_flush_buffer(void) {
 
   /* No log file, the replayer is not doing it's job correctly */
   else {
+    log_info("Could not stat log file %s: %s", cf_log_packets_file, strerror(errno));
     log_touch();
   }
 

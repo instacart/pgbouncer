@@ -25,6 +25,7 @@
 
 #define LOG_BUFFER_SIZE 1024 * 1024 /* 1 MB */
 #define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
+#define DELIMITER '\x19'
 
 /* Flush packets to log every 0.1 of a second */
 static struct timeval buffer_drain_period = {0, USEC / 10};
@@ -95,19 +96,19 @@ static void log_shutdown(void) {
  * Log packet into the buffer.
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
+  uint32_t net_ci;
+
+  /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)
     return;
 
-  uint32_t net_ci;
   /* Buffer full, drop the packet logging on the floor.
-   * No logging since this function is called very often.
-   * This would happen because the buffer isn't being drained, 
-   * which has a log line already.
+   * No logging since this function is called for each incoming packet.
    *
    * pkt->len = packet size
    * + 5 bytes of metadata
    */
-  if (len + pkt->len + sizeof(uint32_t) > LOG_BUFFER_SIZE) {
+  if (len + sizeof(uint32_t) + pkt->len + 1 > LOG_BUFFER_SIZE) {
     return;
   }
 
@@ -139,9 +140,13 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    **/
   net_ci = htonl(client->client_id);
   memcpy(buf + len, &net_ci, sizeof(uint32_t));
-  memcpy(buf + len + sizeof(uint32_t), pkt->data.data, pkt->len);
-  buf[len + sizeof(uint32_t) + pkt->len] = '\x19';
-  len += (pkt->len + 5);
+  len += sizeof(uint32_t);
+
+  memcpy(buf + len, pkt->data.data, pkt->len);
+  len += pkt->len;
+
+  buf[len] = DELIMITER;
+  len += 1;
 }
 
 /*

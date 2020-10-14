@@ -35,7 +35,6 @@ static char *buf = NULL;
 static size_t len = 0;
 
 static void log_flush_buffer(void);
-static void log_touch(void);
 static void log_shutdown(void);
 static void log_init(void);
 void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg);
@@ -96,6 +95,9 @@ static void log_shutdown(void) {
  * Log packet into the buffer.
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
+  if (cf_shutdown)
+    return;
+
   uint32_t net_ci;
   /* Buffer full, drop the packet logging on the floor.
    * No logging since this function is called very often.
@@ -161,10 +163,10 @@ static void log_flush_buffer(void) {
     }
   }
 
-  /* No log file, the replayer is not doing it's job correctly */
+  /* No log file, the replayer is not doing it's job correctly. We'll just create one. */
   else {
     log_info("Could not stat log file %s: %s", cf_log_packets_file, strerror(errno));
-    log_touch();
+    info.st_size = 0;
   }
 
   /*
@@ -198,7 +200,7 @@ static void log_flush_buffer(void) {
   flock(tmp_fd, LOCK_UN);
   close(tmp_fd);
 
-  log_info("Flushed %lu bytes to packet log buffer", len);
+  log_info("Flushed %lu bytes to packet log file. Log file size: %.2f kb", len, (info.st_size + len) / 1024.0);
 
   /* Clear the buffer since it's an append buffer */
   memset(buf, 0, len);
@@ -206,22 +208,11 @@ static void log_flush_buffer(void) {
 }
 
 /*
- * Touch the log file (or create it).
- */
-static void log_touch(void) {
-  /* Touch the logfile */
-  int fd = open(cf_log_packets_file, O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
-  if (fd != -1) {
-    close(fd);
-  }
-}
-
-/*
  * Callback for the event loop.
  */
 void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg) {
   /* Handle shutdown (best-effort since we are not the only event) */
-  if (cf_shutdown) {
+  if (cf_shutdown && cf_log_packets) {
     log_flush_buffer();
     log_shutdown();
   }

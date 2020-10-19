@@ -34,6 +34,7 @@ static struct event buffer_drain_ev;
 /* The buffer */
 static char *buf = NULL;
 static size_t len = 0;
+static size_t flushed = 0;
 
 static void log_flush_buffer(void);
 static void log_shutdown(void);
@@ -168,9 +169,9 @@ static void log_flush_buffer(void) {
     }
   }
 
-  /* No log file, the replayer is not doing it's job correctly. We'll just create one. */
+  /* No log file, the replayer has rotated it. */
   else {
-    log_info("Could not stat log file %s: %s", cf_log_packets_file, strerror(errno));
+    /* log_info("Could not stat log file %s: %s", cf_log_packets_file, strerror(errno)); */
     info.st_size = 0;
   }
 
@@ -205,7 +206,13 @@ static void log_flush_buffer(void) {
   flock(tmp_fd, LOCK_UN);
   close(tmp_fd);
 
-  log_info("Flushed %lu bytes to packet log file. Log file size: %.2f kb", len, (info.st_size + len) / 1024.0);
+  flushed += len;
+
+  /* Log every 1mb of packets flushed */
+  if (flushed > 1e6) {
+    log_info("Flushed %.2f kb to packet log file. Log file size: %.2f kb", flushed / 1024.0, (info.st_size + len) / 1024.0);
+    flushed = 0;
+  }
 
   /* Clear the buffer since it's an append buffer */
   memset(buf, 0, len);

@@ -33,8 +33,8 @@ static struct event buffer_drain_ev;
 
 /* The buffer */
 static char *buf = NULL;
-static size_t len = 0;
-static size_t flushed = 0;
+static volatile size_t len = 0;
+static volatile size_t flushed = 0;
 
 static void log_flush_buffer(void);
 static void log_shutdown(void);

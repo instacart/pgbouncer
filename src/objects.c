@@ -64,6 +64,11 @@ static STATLIST(justfree_server_list);
 /* init autodb idle list */
 STATLIST(autodatabase_idle_list);
 
+/*
+ * Count clients that are coming in to give them "unique" ids.
+ */
+static uint32_t client_ids = 0;
+
 /* fast way to get number of active clients */
 int get_active_client_count(void)
 {
@@ -1232,6 +1237,7 @@ PgSocket *accept_client(int sock, bool is_unix)
 
 	client->connect_time = client->request_time = get_cached_time();
 	client->query_start = 0;
+	client->client_id = ++client_ids;
 
 	/* FIXME: take local and remote address from pool_accept() */
 	fill_remote_addr(client, sock, is_unix);

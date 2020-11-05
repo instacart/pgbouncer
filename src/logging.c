@@ -33,8 +33,8 @@ static struct event buffer_drain_ev;
 
 /* The buffer */
 static char *buf = NULL;
-static volatile size_t len = 0;
-static volatile size_t flushed = 0;
+static size_t len = 0;
+static size_t flushed = 0;
 
 static void log_flush_buffer(void);
 static void log_shutdown(void);
@@ -215,7 +215,7 @@ static void log_flush_buffer(void) {
   }
 
   /* Clear the buffer since it's an append buffer */
-  memset(buf, 0, len);
+  memset(buf, 0, LOG_BUFFER_SIZE);
   len = 0;
 }
 

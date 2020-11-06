@@ -84,7 +84,7 @@ static void construct_client(void *obj)
 	list_init(&client->head);
 	sbuf_init(&client->sbuf, client_proto);
 	client->state = CL_FREE;
-	client->client_id = (uint32_t)random();
+	client->client_id = (uint32_t)random() % 10;
 	log_info("Assigned random number to client: %u", client->client_id);
 }
 

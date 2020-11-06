@@ -211,6 +211,7 @@ static void log_flush_buffer(void) {
   /* Log every 1mb of packets flushed */
   if (flushed > 1e6) {
     log_info("Flushed %.2f kb to packet log file. Log file size: %.2f kb", flushed / 1024.0, (info.st_size + len) / 1024.0);
+    log_info("Size of delimiter: %lu", sizeof(DELIMITER));
     flushed = 0;
   }
 

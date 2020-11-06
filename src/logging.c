@@ -139,7 +139,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * packet    - pkt->len bytes, raw
    * delimiter - 1 byte, 0x19 (EM)
    **/
-  net_ci = htonl(client->client_id);
+  net_ci = 1234;
   memcpy(buf + len, &net_ci, sizeof(uint32_t));
   len += sizeof(uint32_t);
 

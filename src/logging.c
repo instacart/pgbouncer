@@ -25,7 +25,7 @@
 
 #define LOG_BUFFER_SIZE 1024 * 1024 /* 1 MB */
 #define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
-#define DELIMITER 0x19
+static char delimiter = 0x19;
 
 /* Flush packets to log every 0.1 of a second */
 static struct timeval buffer_drain_period = {0, USEC / 10};
@@ -109,7 +109,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * pkt->len = packet size
    * + 5 bytes of metadata
    */
-  if (len + sizeof(uint32_t) + pkt->len + sizeof(DELIMITER) >= LOG_BUFFER_SIZE) {
+  if (len + sizeof(uint32_t) + pkt->len + sizeof(delimiter) >= LOG_BUFFER_SIZE) {
     return;
   }
 
@@ -146,8 +146,8 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   memcpy(buf + len, pkt->data.data, pkt->len);
   len += pkt->len;
 
-  buf[len] = DELIMITER;
-  len += sizeof(DELIMITER);
+  buf[len] = delimiter;
+  len += sizeof(delimiter);
 }
 
 /*
@@ -211,7 +211,7 @@ static void log_flush_buffer(void) {
   /* Log every 1mb of packets flushed */
   if (flushed > 1e6) {
     log_info("Flushed %.2f kb to packet log file. Log file size: %.2f kb", flushed / 1024.0, (info.st_size + len) / 1024.0);
-    log_info("Size of delimiter: %lu", sizeof(DELIMITER));
+    log_info("Size of delimiter: %lu", sizeof(delimiter));
     flushed = 0;
   }
 

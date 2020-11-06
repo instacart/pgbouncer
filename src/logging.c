@@ -137,6 +137,10 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * packet    - pkt->len bytes, raw
    * delimiter - 1 byte, 0x19 (EM)
    **/
+  if (buf[len] != 0) {
+    log_info("Dirty buffer at start.");
+  }
+
   log_info("Client id: %u", (uint32_t)client->client_id);
   memcpy(buf + len, (char*)&client->client_id, sizeof(uint32_t));
   log_info("Buffer: %u", (uint32_t)*(buf + len));
@@ -147,6 +151,10 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
 
   buf[len] = delimiter;
   len += sizeof(delimiter);
+
+  if (buf[len] != 0) {
+    log_info("Dirty buffer at end.");
+  }
 }
 
 /*

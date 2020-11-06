@@ -84,7 +84,8 @@ static void construct_client(void *obj)
 	list_init(&client->head);
 	sbuf_init(&client->sbuf, client_proto);
 	client->state = CL_FREE;
-	client->client_id = 1234;
+	int choice[5] = {1234, 4321, 5676, 3435, 5465};
+	client->client_id = choice[random() % 5];
 }
 
 static void construct_server(void *obj)

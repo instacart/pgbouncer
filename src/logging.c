@@ -109,7 +109,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * pkt->len = packet size
    * + 5 bytes of metadata
    */
-  if (len + sizeof(uint32_t) + pkt->len + 1 > LOG_BUFFER_SIZE) {
+  if (len + sizeof(uint32_t) + pkt->len + sizeof(DELIMITER) >= LOG_BUFFER_SIZE) {
     return;
   }
 
@@ -147,7 +147,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   len += pkt->len;
 
   buf[len] = DELIMITER;
-  len += 1;
+  len += sizeof(DELIMITER);
 }
 
 /*

@@ -1232,7 +1232,6 @@ PgSocket *accept_client(int sock, bool is_unix)
 
 	client->connect_time = client->request_time = get_cached_time();
 	client->query_start = 0;
-	client->client_id = random();
 
 	/* FIXME: take local and remote address from pool_accept() */
 	fill_remote_addr(client, sock, is_unix);

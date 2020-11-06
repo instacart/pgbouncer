@@ -97,7 +97,6 @@ static void log_shutdown(void) {
  * Log packet into the buffer.
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
-  uint32_t net_ci;
 
   /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)
@@ -139,8 +138,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * packet    - pkt->len bytes, raw
    * delimiter - 1 byte, 0x19 (EM)
    **/
-  net_ci = (uint32_t)client->client_id;
-  memcpy(buf + len, &net_ci, sizeof(uint32_t));
+  memcpy(buf + len, &client->client_id, sizeof(uint32_t));
   len += sizeof(uint32_t);
 
   memcpy(buf + len, pkt->data.data, pkt->len);

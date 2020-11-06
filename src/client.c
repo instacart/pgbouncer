@@ -250,6 +250,7 @@ bool set_pool(PgSocket *client, const char *dbname, const char *username, const 
 	Assert((password && takeover) || (!password && !takeover));
 
 	/* find database */
+	client->client_id = random();
 	client->db = find_database(dbname);
 	if (!client->db) {
 		client->db = register_auto_database(dbname);

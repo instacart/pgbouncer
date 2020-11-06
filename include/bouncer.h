@@ -435,6 +435,7 @@ struct PgSocket {
 	VarCache vars;		/* state of interesting server parameters */
 
 	SBuf sbuf;		/* stream buffer, must be last */
+
 	uint32_t client_id; /* A "unique" id of the client */
 };
 

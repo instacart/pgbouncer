@@ -97,6 +97,8 @@ static void log_shutdown(void) {
  * Log packet into the buffer.
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
+  size_t i;
+
   /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)
     return;
@@ -142,7 +144,19 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   }
 
   log_info("Client id: %u", (uint32_t)client->client_id);
-  snprintf(buf + len, sizeof(uint32_t), "%u", client->client_id);
+
+  for (i = 0; i < sizeof(uint32_t); i++) {
+    buf[len] = (unsigned char)(client->client_id >> (8 * i) & 0xff);
+    len += 1;
+  }
+
+  if (buf[len] != 0) {
+    log_info("Dirty buffer after client_id");
+  }
+  else {
+    log_info("Buffer clean after client_id");
+  }
+
   log_info("Buffer: %u", (uint32_t)*(buf + len));
   len += sizeof(uint32_t);
 

@@ -368,7 +368,6 @@ struct PgDatabase {
  * ->state corresponds to various lists the struct can be at.
  */
 struct PgSocket {
-	uint32_t client_id; /* A "unique" id of the client */
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
 	PgPool *pool;		/* parent pool, if NULL not yet assigned */
@@ -436,6 +435,7 @@ struct PgSocket {
 	VarCache vars;		/* state of interesting server parameters */
 
 	SBuf sbuf;		/* stream buffer, must be last */
+	uint32_t client_id; /* A "unique" id of the client */
 };
 
 #define RAW_IOBUF_SIZE	offsetof(IOBuf, buf)

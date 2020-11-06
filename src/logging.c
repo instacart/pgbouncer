@@ -139,7 +139,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    **/
   log_info("Client id: %u", (uint32_t)client->client_id);
   memcpy(buf + len, (char*)&client->client_id, sizeof(uint32_t));
-  log_info("Buffer: %u", (uint32_t)(buf + len));
+  log_info("Buffer: %u", (uint32_t)*(buf + len));
   len += sizeof(uint32_t);
 
   memcpy(buf + len, pkt->data.data, pkt->len);

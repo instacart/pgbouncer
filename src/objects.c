@@ -53,8 +53,6 @@ struct Slab *pool_cache;
 struct Slab *user_cache;
 struct Slab *iobuf_cache;
 
-static uint32_t client_ids = 0;
-
 /*
  * libevent may still report events when event_del()
  * is called from somewhere else.  So hide just freed
@@ -65,6 +63,13 @@ static STATLIST(justfree_server_list);
 
 /* init autodb idle list */
 STATLIST(autodatabase_idle_list);
+
+/*
+ * Count clients that are coming in to give them "unique" ids.
+ */
+static uint32_t client_ids = 0;
+
+
 
 /* fast way to get number of active clients */
 int get_active_client_count(void)

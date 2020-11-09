@@ -27,7 +27,7 @@
 #define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
 
 /* Delimiter, a poor choice but surprisingly better than a unicode control character. */
-static char delimiter = '~';
+static const char delimiter = '~';
 
 /* Flush packets to log every 0.1 of a second */
 static struct timeval buffer_drain_period = {0, USEC / 10};
@@ -73,7 +73,7 @@ void log_init(void) {
     return;
   }
 
-  memset(buf, 0, len);
+  memset(buf, 0, LOG_BUFFER_SIZE);
   len = 0;
 
   log_info("Packet logging initialized");

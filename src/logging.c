@@ -25,7 +25,9 @@
 
 #define LOG_BUFFER_SIZE 1024 * 1024 /* 1 MB */
 #define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
-#define DELIMITER '\x19'
+
+/* Delimiter, a poor choice but surprisingly better than a unicode control character. */
+static const char delimiter = '~';
 
 /* Flush packets to log every 0.1 of a second */
 static struct timeval buffer_drain_period = {0, USEC / 10};
@@ -33,8 +35,8 @@ static struct event buffer_drain_ev;
 
 /* The buffer */
 static char *buf = NULL;
-static volatile size_t len = 0;
-static volatile size_t flushed = 0;
+static size_t len = 0;
+static size_t flushed = 0;
 
 static void log_flush_buffer(void);
 static void log_shutdown(void);
@@ -97,7 +99,7 @@ static void log_shutdown(void) {
  * Log packet into the buffer.
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
-  uint32_t net_ci;
+  uint32_t net_client_id = htonl(client->client_id);
 
   /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)
@@ -109,7 +111,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * pkt->len = packet size
    * + 5 bytes of metadata
    */
-  if (len + sizeof(uint32_t) + pkt->len + 1 > LOG_BUFFER_SIZE) {
+  if (len + sizeof(net_client_id) + pkt->len + sizeof(delimiter) >= LOG_BUFFER_SIZE) {
     return;
   }
 
@@ -139,15 +141,14 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * packet    - pkt->len bytes, raw
    * delimiter - 1 byte, 0x19 (EM)
    **/
-  net_ci = htonl(client->client_id);
-  memcpy(buf + len, &net_ci, sizeof(uint32_t));
-  len += sizeof(uint32_t);
+  memcpy(buf + len, &net_client_id, sizeof(net_client_id));
+  len += sizeof(net_client_id);
 
   memcpy(buf + len, pkt->data.data, pkt->len);
   len += pkt->len;
 
-  buf[len] = DELIMITER;
-  len += 1;
+  buf[len] = delimiter;
+  len += sizeof(delimiter);
 }
 
 /*

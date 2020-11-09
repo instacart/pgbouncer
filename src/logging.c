@@ -25,7 +25,9 @@
 
 #define LOG_BUFFER_SIZE 1024 * 1024 /* 1 MB */
 #define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
-static char delimiter = 0x7E;
+
+/* Safe control character since it comes from ASCII. */
+static char delimiter = 0x19;
 
 /* Flush packets to log every 0.1 of a second */
 static struct timeval buffer_drain_period = {0, USEC / 10};
@@ -71,7 +73,7 @@ void log_init(void) {
     return;
   }
 
-  memset(buf, 0, LOG_BUFFER_SIZE);
+  memset(buf, 0, len);
   len = 0;
 
   log_info("Packet logging initialized");
@@ -97,7 +99,7 @@ static void log_shutdown(void) {
  * Log packet into the buffer.
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
-  size_t i;
+  uint32_t net_client_id = 1236L;
 
   /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)
@@ -109,7 +111,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * pkt->len = packet size
    * + 5 bytes of metadata
    */
-  if (len + sizeof(uint32_t) + pkt->len + sizeof(delimiter) >= LOG_BUFFER_SIZE) {
+  if (len + sizeof(net_client_id) + pkt->len + sizeof(delimiter) >= LOG_BUFFER_SIZE) {
     return;
   }
 
@@ -139,36 +141,14 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * packet    - pkt->len bytes, raw
    * delimiter - 1 byte, 0x19 (EM)
    **/
-  if (buf[len] != 0) {
-    log_info("Dirty buffer at start.");
-  }
-
-  log_info("Client id: %u", (uint32_t)client->client_id);
-
-  for (i = 0; i < sizeof(uint32_t); i++) {
-    buf[len] = (unsigned char)(client->client_id >> (8 * i) & 0xff);
-    len += 1;
-  }
-
-  if (buf[len] != 0) {
-    log_info("Dirty buffer after client_id");
-  }
-  else {
-    log_info("Buffer clean after client_id");
-  }
-
-  log_info("Buffer: %u", (uint32_t)*(buf + len));
-  len += sizeof(uint32_t);
+  memcpy(buf + len, &net_client_id, sizeof(net_client_id));
+  len += sizeof(net_client_id);
 
   memcpy(buf + len, pkt->data.data, pkt->len);
   len += pkt->len;
 
   buf[len] = delimiter;
   len += sizeof(delimiter);
-
-  if (buf[len] != 0) {
-    log_info("Dirty buffer at end.");
-  }
 }
 
 /*
@@ -237,7 +217,7 @@ static void log_flush_buffer(void) {
   }
 
   /* Clear the buffer since it's an append buffer */
-  memset(buf, 0, LOG_BUFFER_SIZE);
+  memset(buf, 0, len);
   len = 0;
 }
 

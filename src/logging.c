@@ -26,8 +26,8 @@
 #define LOG_BUFFER_SIZE 1024 * 1024 /* 1 MB */
 #define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
 
-/* Safe control character since it comes from ASCII. */
-static char delimiter = 0x19;
+/* Delimiter, a poor choice but surprisingly better than a unicode control character. */
+static char delimiter = '~';
 
 /* Flush packets to log every 0.1 of a second */
 static struct timeval buffer_drain_period = {0, USEC / 10};
@@ -99,7 +99,7 @@ static void log_shutdown(void) {
  * Log packet into the buffer.
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
-  uint32_t net_client_id = 1236L;
+  uint32_t net_client_id = htonl(client->client_id);
 
   /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)

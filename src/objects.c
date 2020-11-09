@@ -53,6 +53,8 @@ struct Slab *pool_cache;
 struct Slab *user_cache;
 struct Slab *iobuf_cache;
 
+static uint32_t client_ids = 0;
+
 /*
  * libevent may still report events when event_del()
  * is called from somewhere else.  So hide just freed
@@ -84,8 +86,9 @@ static void construct_client(void *obj)
 	list_init(&client->head);
 	sbuf_init(&client->sbuf, client_proto);
 	client->state = CL_FREE;
-	client->client_id = (uint32_t)random();
-	log_info("Assigned random number to client: %u", client->client_id);
+
+	/* Will collide after 4.2 billion connections, so reasonably low chance. */
+	client->client_id = client_ids++;
 }
 
 static void construct_server(void *obj)

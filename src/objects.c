@@ -69,8 +69,6 @@ STATLIST(autodatabase_idle_list);
  */
 static uint32_t client_ids = 0;
 
-
-
 /* fast way to get number of active clients */
 int get_active_client_count(void)
 {

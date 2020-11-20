@@ -106,7 +106,7 @@ void log_reload_to_buffer(void) {
     return;
   }
 
-  strncpy(buf + len, reload_command, strlen(reload_command));
+  strncpy(buf + len, reload_command, strlen(reload_command) + 1);
   len += strlen(reload_command) + 1;
 
   memcpy(buf + len, &delimiter, sizeof(delimiter));

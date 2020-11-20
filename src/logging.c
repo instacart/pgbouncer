@@ -28,6 +28,7 @@
 
 /* Delimiter, a poor choice but surprisingly better than a unicode control character. */
 static const char delimiter = '~';
+static const char *reload_command = "RELOAD";
 
 /* Flush packets to log every 0.1 of a second */
 static struct timeval buffer_drain_period = {0, USEC / 10};
@@ -93,6 +94,25 @@ static void log_shutdown(void) {
   len = 0;
 
   log_info("Packet logging shut down");
+}
+
+/*
+ * Log reload command to buffer.
+ */
+void log_reload_to_buffer(void) {
+  /* Reload again if you don't see changes because of this */
+  if (len + strlen(reload_command)+1 >= LOG_BUFFER_SIZE) {
+    log_info("Can't issue RELOAD command to replayer, buffer full");
+    return;
+  }
+
+  strncpy(buf + len, reload_command, strlen(reload_command));
+  len += strlen(reload_command) + 1;
+
+  memcpy(buf + len, &delimiter, sizeof(delimiter));
+  len += sizeof(delimiter);
+
+  log_info("Sent RELOAD command to replayer");
 }
 
 /*

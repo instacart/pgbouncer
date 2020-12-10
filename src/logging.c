@@ -23,11 +23,9 @@
 #include <sys/file.h>
 #include <errno.h>
 
-#define LOG_BUFFER_SIZE 1024 * 1024 /* 1 MB */
+#define LOG_BUFFER_SIZE 1024 * 1024 * 2 /* 2 MB */
 #define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
 
-/* Delimiter, a poor choice but surprisingly better than a unicode control character. */
-static const char delimiter = '~';
 static const char *reload_command = "RELOAD";
 
 /* Flush packets to log every 0.1 of a second */
@@ -100,17 +98,35 @@ static void log_shutdown(void) {
  * Log reload command to buffer.
  */
 void log_reload_to_buffer(void) {
+  /* reload command len + pkt length + type */
+  int reload_len = strlen(reload_command);
+  uint32_t pkt_len = htonl(reload_len + sizeof(char) + sizeof(uint32_t));
+
   /* Reload again if you don't see changes because of this */
-  if (len + strlen(reload_command)+1 >= LOG_BUFFER_SIZE) {
+  if (len + reload_len + sizeof(char) + sizeof(uint32_t) >= LOG_BUFFER_SIZE) {
     log_info("Can't issue RELOAD command to replayer, buffer full");
     return;
   }
 
-  strncpy(buf + len, reload_command, strlen(reload_command) + 1);
-  len += strlen(reload_command) + 1;
+  /* empty client id */
+  memset(buf + len, 0, sizeof(uint32_t));
+  len += sizeof(uint32_t);
 
-  memcpy(buf + len, &delimiter, sizeof(delimiter));
-  len += sizeof(delimiter);
+  /* 0 interval */
+  memset(buf + len, 0, sizeof(uint32_t));
+  len += sizeof(uint32_t);
+
+  /* no type */
+  memset(buf + len, 0, sizeof(char));
+  len += sizeof(char);
+
+  /* length of the reload command */
+  memcpy(buf + len, &pkt_len, sizeof(uint32_t));
+  len += sizeof(uint32_t);
+
+  /* reload itself */
+  strncpy(buf + len, reload_command, reload_len);
+  len += reload_len;
 
   log_info("Sent RELOAD command to replayer");
 }
@@ -118,8 +134,9 @@ void log_reload_to_buffer(void) {
 /*
  * Log packet into the buffer.
  */
-void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
-  uint32_t net_client_id = htonl(client->client_id);
+void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client, uint32_t query_interval) {
+  uint32_t net_client_id = htonl(client->client_id),
+           net_query_interval = htonl(query_interval);
 
   /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)
@@ -129,9 +146,9 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * No logging since this function is called for each incoming packet.
    *
    * pkt->len = packet size
-   * + 5 bytes of metadata
+   * + 16 bytes of metadata
    */
-  if (len + sizeof(net_client_id) + pkt->len + sizeof(delimiter) >= LOG_BUFFER_SIZE) {
+  if (len + sizeof(net_client_id) + sizeof(net_query_interval) + pkt->len >= LOG_BUFFER_SIZE) {
     return;
   }
 
@@ -158,17 +175,20 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * Format:
    *
    * client_id - 4 bytes, unsigned
+   * interval    4 bytes, unsigned
    * packet    - pkt->len bytes, raw
-   * delimiter - 1 byte, 0x19 (EM)
-   **/
+   *             first 4 bytes of the packet are the type
+   *             second 4 bytes of the packet are the length
+   */
+  log_info("starting write: %u", query_interval);
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);
 
+  memcpy(buf + len, &net_query_interval, sizeof(net_query_interval));
+  len += sizeof(net_query_interval);
+
   memcpy(buf + len, pkt->data.data, pkt->len);
   len += pkt->len;
-
-  buf[len] = delimiter;
-  len += sizeof(delimiter);
 }
 
 /*

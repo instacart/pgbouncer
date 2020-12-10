@@ -15,5 +15,5 @@
  */
 
 void log_setup(void);
-void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client);
+void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client, uint32_t query_interval);
 void log_reload_to_buffer(void);

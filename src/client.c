@@ -869,7 +869,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 
 		if (cf_log_packets && client->last_query > 0) {
 			usec_t query_interval_usec = client->query_start - client->last_query;
-			log_info("time delta: %llu", query_interval_usec);
 
 			if (query_interval_usec > UINT32_MAX) {
 				query_interval = UINT32_MAX; /* up to about an hour between queries */

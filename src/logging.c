@@ -180,7 +180,6 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client, uint32_t query_interval) {
    *             first 4 bytes of the packet are the type
    *             second 4 bytes of the packet are the length
    */
-  log_info("starting write: %u", query_interval);
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);
 

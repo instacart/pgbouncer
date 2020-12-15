@@ -811,7 +811,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 {
 	SBuf *sbuf = &client->sbuf;
 	int rfq_delta = 0;
-	uint32_t query_interval = 0;
 
 	switch (pkt->type) {
 
@@ -866,18 +865,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	if (!client->query_start) {
 		client->pool->stats.query_count++;
 		client->query_start = get_cached_time();
-
-		if (cf_log_packets && client->last_query > 0) {
-			usec_t query_interval_usec = client->query_start - client->last_query;
-
-			if (query_interval_usec > UINT32_MAX) {
-				query_interval = UINT32_MAX; /* up to about an hour between queries */
-			} else {
-				query_interval = (uint32_t)query_interval_usec;
-			}
-		}
-
-		client->last_query = client->query_start;
 	}
 
 	/* remember timestamp of the first query in a transaction */
@@ -909,7 +896,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 
 	/* log the query, if needed */
 	if (cf_log_packets)
-		log_pkt_to_buffer(pkt, client, query_interval);
+		log_pkt_to_buffer(pkt, client);
 
 	return true;
 }

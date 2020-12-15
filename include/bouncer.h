@@ -405,7 +405,7 @@ struct PgSocket {
 	usec_t connect_time;	/* when connection was made */
 	usec_t request_time;	/* last activity time */
 	usec_t query_start;	/* query start moment */
-	usec_t last_query; /* last query start */
+	usec_t last_pkt;	/* last packet arrival */
 	usec_t xact_start;	/* xact start moment */
 	usec_t wait_start;	/* waiting start moment */
 

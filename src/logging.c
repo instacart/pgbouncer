@@ -134,14 +134,28 @@ void log_reload_to_buffer(void) {
 /*
  * Log packet into the buffer.
  */
-void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client, uint32_t query_interval) {
+void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   uint32_t net_client_id = htonl(client->client_id),
-           net_query_interval = htonl(query_interval);
+           query_interval = 0, net_query_interval;
 
   /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)
     return;
 
+  /* record intervals between packets */
+  if (client->last_pkt > 0) {
+    usec_t query_interval_usec = get_cached_time() - client->last_pkt;
+
+    if (query_interval_usec > UINT32_MAX) {
+      query_interval = UINT32_MAX; /* up to about an hour between queries */
+    } else {
+      query_interval = (uint32_t)query_interval_usec;
+    }
+  }
+
+  client->last_pkt = get_cached_time();
+
+  net_query_interval = htonl(query_interval);
   /* Buffer full, drop the packet logging on the floor.
    * No logging since this function is called for each incoming packet.
    *
@@ -177,8 +191,8 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client, uint32_t query_interval) {
    * client_id - 4 bytes, unsigned
    * interval    4 bytes, unsigned
    * packet    - pkt->len bytes, raw
-   *             first 4 bytes of the packet are the type
-   *             second 4 bytes of the packet are the length
+   *             first byte of the packet is the type
+   *             next 4 bytes of the packet are the length
    */
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);

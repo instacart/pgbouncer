@@ -100,10 +100,10 @@ static void log_shutdown(void) {
 void log_reload_to_buffer(void) {
   /* reload command len + pkt length + type */
   int reload_len = strlen(reload_command);
-  uint32_t pkt_len = htonl(reload_len + sizeof(char) + sizeof(uint32_t));
+  uint32_t pkt_len = htonl(reload_len + sizeof(uint32_t));
 
   /* Reload again if you don't see changes because of this */
-  if (len + reload_len + sizeof(char) + sizeof(uint32_t) >= LOG_BUFFER_SIZE) {
+  if (len + reload_len + sizeof(uint32_t) >= LOG_BUFFER_SIZE) {
     log_info("Can't issue RELOAD command to replayer, buffer full");
     return;
   }

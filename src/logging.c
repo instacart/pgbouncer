@@ -168,16 +168,11 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
 
   /* Log only supported packets.
    *
-   * P - prepared statement
-   * B - bind params to prepared statement
-   * E - execute prepared statement
    * Q - query, execute immediately
+   * TODO: prepared statements
    */
   switch(pkt->type) {
-    case 'E':
     case 'Q':
-    case 'P':
-    case 'B':
       break;
     default:
       return;

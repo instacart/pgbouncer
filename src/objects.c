@@ -951,6 +951,8 @@ void disconnect_client(PgSocket *client, bool notify, const char *reason, ...)
 	change_client_state(client, CL_JUSTFREE);
 	if (!sbuf_close(&client->sbuf))
 		log_noise("sbuf_close failed, retry later");
+	if (cf_log_packets)
+		log_connect_to_buffer(false, client);
 }
 
 /*
@@ -1288,6 +1290,9 @@ bool finish_client_login(PgSocket *client)
 	/* send the message */
 	if (!welcome_client(client))
 		return false;
+
+	if (cf_log_packets)
+		log_connect_to_buffer(true, client);
 
 	slog_debug(client, "logged in");
 

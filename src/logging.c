@@ -27,6 +27,7 @@
 #define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
 
 static const char *reload_command = "RELOAD";
+static const char connect_char = '!';
 
 /* Flush packets to log every 0.1 of a second */
 static struct timeval buffer_drain_period = {0, USEC / 10};
@@ -129,6 +130,47 @@ void log_reload_to_buffer(void) {
   len += reload_len;
 
   log_info("Sent RELOAD command to replayer");
+}
+
+void log_connect_to_buffer(bool connected, PgSocket *client) {
+  uint32_t net_client_id = htonl(client->client_id),
+           query_interval = 0, net_query_interval,
+           pkt_len = sizeof(uint8_t) + sizeof(uint32_t),
+           net_pkt_len = htonl(pkt_len);
+
+  if (cf_shutdown)
+    return;
+
+  if (len + sizeof(net_client_id) + sizeof(net_query_interval) + sizeof(char) + pkt_len >= LOG_BUFFER_SIZE) {
+    return;
+  }
+
+  if (client->last_pkt > 0 && !connected) {
+    usec_t query_interval_usec = get_cached_time() - client->last_pkt;
+
+    if (query_interval_usec > UINT32_MAX) {
+      query_interval = UINT32_MAX; /* up to about an hour between queries */
+    } else {
+      query_interval = (uint32_t)query_interval_usec;
+    }
+  }
+
+  net_query_interval = htonl(query_interval);
+
+  memcpy(buf + len, &net_client_id, sizeof(net_client_id));
+  len += sizeof(net_client_id);
+
+  memcpy(buf + len, &net_query_interval, sizeof(net_query_interval));
+  len += sizeof(net_query_interval);
+
+  memcpy(buf + len, &connect_char, sizeof(char));
+  len += sizeof(char);
+
+  memcpy(buf + len, &net_pkt_len, sizeof(net_pkt_len));
+  len += sizeof(net_pkt_len);
+
+  memcpy(buf + len, &connected, sizeof(uint8_t));
+  len += sizeof(uint8_t);
 }
 
 /*

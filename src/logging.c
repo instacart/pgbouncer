@@ -25,7 +25,6 @@
 #include <time.h>
 
 #define LOG_BUFFER_SIZE 1024 * 1024 * 2 /* 2 MB */
-#define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
 
 /* File id to prevent accidental collision, appended to file name such as 'pktlog.001' */
 #define FILE_ID_MAX 255
@@ -46,6 +45,7 @@ static void log_flush_buffer(void);
 static void log_shutdown(void);
 static void log_init(void);
 void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg);
+static bool log_ensure_buffer_space(uint32_t n);
 
 /*
  * Flush the buffer every .1 of a second
@@ -108,7 +108,7 @@ void log_reload_to_buffer(void) {
   uint32_t pkt_len = htonl(reload_len + sizeof(uint32_t));
 
   /* Reload again if you don't see changes because of this */
-  if (len + reload_len + sizeof(uint32_t) >= LOG_BUFFER_SIZE) {
+  if (!log_ensure_buffer_space(reload_len + sizeof(uint32_t))) {
     log_info("Can't issue RELOAD command to replayer, buffer full");
     return;
   }
@@ -145,9 +145,8 @@ void log_connect_to_buffer(bool connected, PgSocket *client) {
   if (cf_shutdown)
     return;
 
-  if (len + sizeof(net_client_id) + sizeof(net_query_interval) + sizeof(char) + pkt_len >= LOG_BUFFER_SIZE) {
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + sizeof(char) + pkt_len))
     return;
-  }
 
   if (client->last_pkt > 0 && !connected) {
     usec_t query_interval_usec = get_cached_time() - client->last_pkt;
@@ -208,9 +207,8 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * pkt->len = packet size
    * + 16 bytes of metadata
    */
-  if (len + sizeof(net_client_id) + sizeof(net_query_interval) + pkt->len >= LOG_BUFFER_SIZE) {
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + pkt->len))
     return;
-  }
 
   /* Log only supported packets.
    * P - prepared statement
@@ -247,6 +245,19 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
 
   memcpy(buf + len, pkt->data.data, pkt->len);
   len += pkt->len;
+}
+
+/*
+ * Check if we have space in the buffer to append n bytes - if we don't, disable logging
+ */
+static bool log_ensure_buffer_space(uint32_t n) {
+  if (len + n > LOG_BUFFER_SIZE) {
+    log_info("Warning - Disabled packet logging, buffer full");
+    cf_log_packets = 0;
+    log_shutdown();
+    return false;
+  }
+  return true;
 }
 
 /*

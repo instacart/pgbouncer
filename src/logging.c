@@ -20,11 +20,16 @@
 
 #include "bouncer.h"
 
-#include <sys/file.h>
 #include <errno.h>
+#include <sys/file.h>
+#include <time.h>
 
 #define LOG_BUFFER_SIZE 1024 * 1024 * 2 /* 2 MB */
 #define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
+
+/* File id to prevent accidental collision, appended to file name such as 'pktlog.001' */
+#define FILE_ID_MAX 255
+static uint8_t file_id = 0;
 
 static const char *reload_command = "RELOAD";
 static const char connect_char = '!';
@@ -36,7 +41,6 @@ static struct event buffer_drain_ev;
 /* The buffer */
 static char *buf = NULL;
 static size_t len = 0;
-static size_t flushed = 0;
 
 static void log_flush_buffer(void);
 static void log_shutdown(void);
@@ -246,47 +250,57 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
 }
 
 /*
+ * Check if the files we are going to touch dont exist - if they do, disable logging
+ */
+static bool log_ensure_file_dont_exist(char *file) {
+  struct stat info;
+  if (stat(file, &info) != -1) {
+    char time[50];
+    strftime(time, 50, "%Y-%m-%d %H:%M:%S", localtime(&info.st_mtime));
+    log_info("Warning - Disabled packet logging, packet log file exists: %s, size: %lld bytes, modified_at: %s", file, info.st_size, time);
+    cf_log_packets = 0;
+    log_shutdown();
+    return false;
+  }
+  return true;
+}
+
+/*
  * Flush the packets to disk.
+ *
+ * Since the log files will be read by a different process, it uses the file name to communicate state.
+ *
+ * This process always write to the next available file_id, and rotate to 0 when it reaches the max value.
+ *
+ * During the write, a file named 'pktlog.000.w' will be filled with the buffer, after done flushing,
+ * the file get renamed to 'pktlog.000' indicating it's ready to be consumed.
+ * 
+ * After consumption, the process consuming the log files needs to remove them
+ * from the directory to allow the name reuse after rotation.
  */
 static void log_flush_buffer(void) {
-  int tmp_fd, fd;
-  struct stat info;
-  char tmp_fname[strlen(cf_log_packets_file)+6];
+  int fd;
 
   /* Don't waste time on an empty buffer - no traffic on the bouncer */
   if (len < 1)
     return;
 
-  if (stat(cf_log_packets_file, &info) != -1) {
-    if (info.st_size > MAX_LOG_FILE_SIZE) {
-      log_info("Dropping packet logging: packet log file %s is %lld bytes which is too large", cf_log_packets_file, info.st_size);
-      return;
-    }
-  }
+  /* In-flight write file */
+  char next_fname[strlen(cf_log_packets_file)+7];   /* .001.w */
+  snprintf(next_fname, strlen(cf_log_packets_file)+7, "%s.%03d.w", cf_log_packets_file, file_id);
 
-  /* No log file, the replayer has rotated it. */
-  else {
-    /* log_info("Could not stat log file %s: %s", cf_log_packets_file, strerror(errno)); */
-    info.st_size = 0;
-  }
+  /* Available file */
+  char next_fname_available[strlen(cf_log_packets_file) + 5];   /* .001 */
+  snprintf(next_fname_available, strlen(cf_log_packets_file)+5, "%s.%03d", cf_log_packets_file, file_id);
 
-  /*
-   * Get a shared lock on a .lock file.
-   * The replayer takes an exclusive lock on this file and prevents
-   * us from opening up the file descriptor for the time it takes it to rename
-   * the file. This forces us to write to a new log file.
-   */
-  snprintf(tmp_fname, strlen(cf_log_packets_file) + 6, "%s.lock", cf_log_packets_file);
-  tmp_fd = open(tmp_fname, O_CREAT, S_IWUSR | S_IRUSR);
-  if (flock(tmp_fd, LOCK_SH | LOCK_NB) == -1) {
-    log_info("Could not acquire lock file for packet logging: %s", strerror(errno));
-
-    /* Try again in .1 of a second */
+  /* Check both files */
+  if (!log_ensure_file_dont_exist(next_fname))
     return;
-  }
 
-  /* Open the log file in append mode */
-  fd = open(cf_log_packets_file, O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
+  if (!log_ensure_file_dont_exist(next_fname_available))
+    return;
+
+  fd = open(next_fname, O_EXCL | O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
   if (fd == -1) {
     log_info("Could not open packet log file: %s", strerror(errno));
     return;
@@ -295,23 +309,25 @@ static void log_flush_buffer(void) {
   /* Flush the packets to the log file */
   write(fd, buf, len);
 
-  /* Close the log file and release the lock file */
+  /* Close the log file */
   fsync(fd);
   close(fd);
-  flock(tmp_fd, LOCK_UN);
-  close(tmp_fd);
 
-  flushed += len;
-
-  /* Log every 1mb of packets flushed */
-  if (flushed > 1e6) {
-    log_info("Flushed %.2f kb to packet log file. Log file size: %.2f kb", flushed / 1024.0, (info.st_size + len) / 1024.0);
-    flushed = 0;
-  }
+  log_info("Flushed %lu bytes to packet log file: %s", len, next_fname);
 
   /* Clear the buffer since it's an append buffer */
   memset(buf, 0, len);
   len = 0;
+
+  if (rename(next_fname, next_fname_available) != 0) {
+      log_info("Error: unable to rename file '%s' to '%s'", next_fname, next_fname_available);
+   }
+
+  /* Increment file id */
+  if (file_id == FILE_ID_MAX)
+    file_id = 0;
+  else
+    file_id++;
 }
 
 /*

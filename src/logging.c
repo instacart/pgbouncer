@@ -252,7 +252,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
  */
 static bool log_ensure_buffer_space(uint32_t n) {
   if (len + n > LOG_BUFFER_SIZE) {
-    log_info("Warning - Disabled packet logging, buffer full");
+    log_info("Warning - Disabled packet logging, buffer full - current buffer size: %zu, bytes required: %u", len, n);
     cf_log_packets = 0;
     log_shutdown();
     return false;

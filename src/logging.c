@@ -305,11 +305,13 @@ static void log_flush_buffer(void) {
   snprintf(next_fname_available, strlen(cf_log_packets_file)+5, "%s.%03d", cf_log_packets_file, file_id);
 
   /* Check both files */
+  /*
   if (!log_ensure_file_dont_exist(next_fname))
     return;
 
   if (!log_ensure_file_dont_exist(next_fname_available))
     return;
+  */
 
   fd = open(next_fname, O_EXCL | O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
   if (fd == -1) {

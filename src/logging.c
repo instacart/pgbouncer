@@ -326,7 +326,7 @@ static void log_flush_buffer(void) {
   fsync(fd);
   close(fd);
 
-  log_info("Flushed %lu bytes to packet log file: %s", len, next_fname);
+  // log_info("Flushed %lu bytes to packet log file: %s", len, next_fname);
 
   /* Clear the buffer since it's an append buffer */
   memset(buf, 0, len);

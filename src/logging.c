@@ -252,9 +252,13 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
  */
 static bool log_ensure_buffer_space(uint32_t n) {
   if (len + n > LOG_BUFFER_SIZE) {
-    log_info("Warning - Disabled packet logging, buffer full - current buffer size: %zu, bytes required: %u", len, n);
+    log_info("Warning - Buffer full - current buffer size: %zu, bytes required: %u", len, n);
+    /*
+    don't disable logging
+
     cf_log_packets = 0;
     log_shutdown();
+    */
     return false;
   }
   return true;
@@ -268,9 +272,13 @@ static bool log_ensure_file_dont_exist(char *file) {
   if (stat(file, &info) != -1) {
     char time[50];
     strftime(time, 50, "%Y-%m-%d %H:%M:%S", localtime(&info.st_mtime));
-    log_info("Warning - Disabled packet logging, packet log file exists: %s, size: %lld bytes, modified_at: %s", file, info.st_size, time);
+    log_info("Warning - Packet log file exists: %s, size: %lld bytes, modified_at: %s", file, info.st_size, time);
+    /*
+    don't disable logging
+    
     cf_log_packets = 0;
     log_shutdown();
+    */    
     return false;
   }
   return true;
@@ -305,13 +313,11 @@ static void log_flush_buffer(void) {
   snprintf(next_fname_available, strlen(cf_log_packets_file)+5, "%s.%03d", cf_log_packets_file, file_id);
 
   /* Check both files */
-  /*
   if (!log_ensure_file_dont_exist(next_fname))
     return;
 
   if (!log_ensure_file_dont_exist(next_fname_available))
     return;
-  */
 
   fd = open(next_fname, O_EXCL | O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
   if (fd == -1) {

@@ -27,14 +27,47 @@
 #define LOG_BUFFER_SIZE 1024 * 1024 * 2 /* 2 MB */
 
 /* File id to prevent accidental collision, appended to file name such as 'pktlog.001' */
-#define FILE_ID_MAX 255
-static uint8_t file_id = 0;
+/*
+ * Each file contains a chunk of the memory buffer, in an indexed manner
+ * This allows to the pgbouncer to always be able to write to a new file (in flight write),
+ * whereas the replayer is still consuming the previously files.
+ *
+ * The replayer knows the file is ready by it's name - pgbouncer atomicly rename the file
+ * after flushing.
+ *
+ * To tweak the ingestion we can adjust the chunk size, the time between flushes
+ * and the number os files.
+ *
+ *  - chunk size:
+ *     - lower bound concerns: this also controls the biggest query
+ *       we could log, so it's wise to big at least 2mb
+ *     - upper bound: this is the biggest amount of space in tmpfs, which is in the ram
+ *       2mb * 1024 files equals to 2gb
+ *
+ * - time between flushes: lower intervals have lower latency for replay,
+ *       but also use more cpu time - the amount of bytes written per second
+ *       should not be affected by the flush interval,
+ *       unless the cpu becomes the bottleneck ~ flushing every 1ms
+ *
+ * - number of files: the biggest, the more tolerant pgbouncer is with
+ *       the replayer lagging behind, the total time is calculated by
+ *       number of files * time between flushes
+ *
+ *       i.e.
+ *            256 * 100ms = 25.6 seconds [space: 2mb * 256 = 512mb]
+ *            256 * 50ms = 12.8 seconds
+ *            1024 * 25ms = 25.6 seconds
+ *            4096 * 25ms = 102.4 seconds [space: 2mb * 4096 = 8gb]
+ *            24 * 50ms = 1.2 seconds [space: 2mb * 24 = 48mb]
+ */
+#define FILE_ID_MAX 24
+static uint16_t file_id = 0;
 
 static const char *reload_command = "RELOAD";
 static const char connect_char = '!';
 
-/* Flush packets to log every 0.1 of a second */
-static struct timeval buffer_drain_period = {0, USEC / 10};
+/* Flush packets 20 times per second - every 50ms */
+static struct timeval buffer_drain_period = {0, USEC / 20};
 static struct event buffer_drain_ev;
 
 /* The buffer */
@@ -305,12 +338,12 @@ static void log_flush_buffer(void) {
     return;
 
   /* In-flight write file */
-  char next_fname[strlen(cf_log_packets_file)+7];   /* .001.w */
-  snprintf(next_fname, strlen(cf_log_packets_file)+7, "%s.%03d.w", cf_log_packets_file, file_id);
+  char next_fname[strlen(cf_log_packets_file)+9];   /* .001.w */
+  snprintf(next_fname, strlen(cf_log_packets_file)+9, "%s.%05d.w", cf_log_packets_file, file_id);
 
   /* Available file */
-  char next_fname_available[strlen(cf_log_packets_file) + 5];   /* .001 */
-  snprintf(next_fname_available, strlen(cf_log_packets_file)+5, "%s.%03d", cf_log_packets_file, file_id);
+  char next_fname_available[strlen(cf_log_packets_file) + 7];   /* .001 */
+  snprintf(next_fname_available, strlen(cf_log_packets_file)+7, "%s.%05d", cf_log_packets_file, file_id);
 
   /* Check both files */
   /*

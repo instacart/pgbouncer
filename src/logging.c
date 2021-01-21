@@ -64,7 +64,8 @@
 static uint16_t file_id = 0;
 
 static const char *reload_command = "RELOAD";
-static const char connect_char = '!';
+static const char connect_char = '!',
+                  response_char = '@';
 
 /* Flush packets 20 times per second - every 50ms */
 static struct timeval buffer_drain_period = {0, USEC / 20};
@@ -169,6 +170,9 @@ void log_reload_to_buffer(void) {
   log_info("Sent RELOAD command to replayer");
 }
 
+/*
+ * Log a client connection or disconnection to the buffer
+ */
 void log_connect_to_buffer(bool connected, PgSocket *client) {
   uint32_t net_client_id = htonl(client->client_id),
            query_interval = 0, net_query_interval,
@@ -207,6 +211,44 @@ void log_connect_to_buffer(bool connected, PgSocket *client) {
 
   memcpy(buf + len, &connected, sizeof(uint8_t));
   len += sizeof(uint8_t);
+}
+
+/*
+ * Log a server response to a client to the buffer
+ */
+void log_response_to_buffer(bool success, usec_t latency, uint32_t rsp_len, PgSocket *client)
+{
+  uint32_t net_client_id = htonl(client->client_id),
+           net_latency, net_rsp_len,
+           pkt_len = sizeof(uint8_t) + sizeof(uint32_t) * 2,
+           net_pkt_len = htonl(pkt_len);
+
+  if (cf_shutdown)
+    return;
+
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(char) + pkt_len))
+    return;
+
+  net_latency = htonl(latency > UINT32_MAX ? UINT32_MAX : latency);
+  net_rsp_len = htonl(rsp_len);
+
+  memcpy(buf + len, &net_client_id, sizeof(net_client_id));
+  len += sizeof(net_client_id);
+
+  memcpy(buf + len, &net_latency, sizeof(net_latency));
+  len += sizeof(net_latency);
+
+  memcpy(buf + len, &response_char, sizeof(char));
+  len += sizeof(char);
+
+  memcpy(buf + len, &net_pkt_len, sizeof(net_pkt_len));
+  len += sizeof(net_pkt_len);
+
+  memcpy(buf + len, &success, sizeof(uint8_t));
+  len += sizeof(uint8_t);
+
+  memcpy(buf + len, &net_rsp_len, sizeof(net_rsp_len));
+  len += sizeof(net_rsp_len);
 }
 
 /*
@@ -298,26 +340,6 @@ static bool log_ensure_buffer_space(uint32_t n) {
 }
 
 /*
- * Check if the files we are going to touch dont exist - if they do, disable logging
- */
-static bool log_ensure_file_dont_exist(char *file) {
-  struct stat info;
-  if (stat(file, &info) != -1) {
-    char time[50];
-    strftime(time, 50, "%Y-%m-%d %H:%M:%S", localtime(&info.st_mtime));
-    log_info("Warning - Packet log file exists: %s, size: %lld bytes, modified_at: %s", file, info.st_size, time);
-    /*
-    don't disable logging
-    
-    cf_log_packets = 0;
-    log_shutdown();
-    */    
-    return false;
-  }
-  return true;
-}
-
-/*
  * Flush the packets to disk.
  *
  * Since the log files will be read by a different process, it uses the file name to communicate state.
@@ -326,7 +348,7 @@ static bool log_ensure_file_dont_exist(char *file) {
  *
  * During the write, a file named 'pktlog.000.w' will be filled with the buffer, after done flushing,
  * the file get renamed to 'pktlog.000' indicating it's ready to be consumed.
- * 
+ *
  * After consumption, the process consuming the log files needs to remove them
  * from the directory to allow the name reuse after rotation.
  */

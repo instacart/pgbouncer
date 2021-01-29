@@ -894,10 +894,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	/* forward the packet */
 	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
 
-	/* log the query, if needed */
-	if (cf_log_packets)
-		log_pkt_to_buffer(pkt, client);
-
 	return true;
 }
 
@@ -907,7 +903,6 @@ bool client_proto(SBuf *sbuf, SBufEvent evtype, struct MBuf *data)
 	bool res = false;
 	PgSocket *client = container_of(sbuf, PgSocket, sbuf);
 	PktHdr pkt;
-
 
 	Assert(!is_server_socket(client));
 	Assert(client->sbuf.sock);
@@ -949,14 +944,45 @@ bool client_proto(SBuf *sbuf, SBufEvent evtype, struct MBuf *data)
 		case CL_ACTIVE:
 			if (client->wait_for_welcome)
 				res = handle_client_startup(client, &pkt);
-			else
+			else {
 				res = handle_client_work(client, &pkt);
+
+				/* log the query */
+				if (cf_log_packets) {
+					if (!incomplete_pkt(&pkt)) {
+						sbuf->current_pkt = NULL;
+						log_pkt_to_buffer(&pkt, client);
+					}
+					else {
+						sbuf->current_pkt = &pkt;
+					}
+				}
+			}
 			break;
 		case CL_WAITING:
 			fatal("why waiting client in client_proto()");
 		default:
 			fatal("bad client state: %d", client->state);
 		}
+		break;
+	case SBUF_EV_READ_MORE:
+		/* Read next parts for the current packet */
+		log_info("-- SBUF_EV_READ_MORE --");
+		// bool full_pkt = (client->current_pkt == mbuf_avail(&current_pkt->data));
+		if (cf_log_packets) {
+			if (sbuf->current_pkt == NULL)
+				fatal("can't read more if there is no current packet");
+
+			if (!incomplete_pkt(sbuf->current_pkt)) {
+				log_info("got the packet");
+				sbuf->current_pkt = NULL;
+				log_pkt_to_buffer(&pkt, client);
+			}
+			else {
+				log_info("incomplete");
+			}
+		}
+		res = true;
 		break;
 	case SBUF_EV_FLUSH:
 		/* client is not interested in it */

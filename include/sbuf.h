@@ -20,7 +20,8 @@
  * event types for protocol handler
  */
 typedef enum {
-	SBUF_EV_READ,		/* got new packet */
+	SBUF_EV_READ,				  /* got new packet */
+	SBUF_EV_READ_MORE,		/* got more parts of the same packet */
 	SBUF_EV_RECV_FAILED,	/* error */
 	SBUF_EV_SEND_FAILED,	/* error */
 	SBUF_EV_CONNECT_FAILED,	/* error */
@@ -74,6 +75,7 @@ struct SBuf {
 
 	int sock;		/* fd for this socket */
 
+	PktHdr *current_pkt;  /* current packet being received */
 	unsigned pkt_remain;	/* total packet length remaining */
 
 	sbuf_cb_t proto_cb;	/* protocol callback */

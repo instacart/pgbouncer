@@ -270,6 +270,12 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    *             first byte of the packet is the type
    *             next 4 bytes of the packet are the length
    */
+
+  /*
+   * while iobuf_amount_parse(client->sbuf.io) contains less than the packet size, the packet is incomplete
+   */
+  log_info("[log_pkt] expected pkt->len: %d, current len: %d, incomplete_pkt: %d", pkt->len, iobuf_amount_parse(client->sbuf.io), incomplete_pkt(pkt));
+
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);
 

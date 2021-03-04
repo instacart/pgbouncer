@@ -67,7 +67,7 @@ static const char *reload_command = "RELOAD";
 static const char connect_char = '!';
 
 /* Flush packets 10 times per second - every 100ms */
-static struct timeval buffer_drain_period = {0, USEC / 100};
+static struct timeval buffer_drain_period = {0, USEC / 10};
 static struct event buffer_drain_ev;
 
 /* The buffer */

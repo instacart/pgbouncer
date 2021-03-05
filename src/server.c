@@ -377,9 +377,11 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 			}
 
 			/* if we are done with a query (even if in the middle of a transaction), log it */
-			if (cf_log_packets && pkt->type == 'Z') {
+			if (cf_log_packets) {
 				if (pkt->type == 'Z') {
 					log_ready_for_query_to_buffer(!server->saw_error, total, client, pkt);
+				} else if (pkt->type == 'C') {
+					log_command_complete_to_buffer(!server->saw_error, total, client, pkt);
 				}
 			}		
 

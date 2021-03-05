@@ -64,8 +64,7 @@
 static uint16_t file_id = 0;
 
 static const char *reload_command = "RELOAD";
-static const char connect_char = '!',
-                  response_char = '@';
+static const char connect_char = '!';
 
 /* Flush packets 20 times per second - every 50ms */
 static struct timeval buffer_drain_period = {0, USEC / 20};
@@ -214,23 +213,20 @@ void log_connect_to_buffer(bool connected, PgSocket *client) {
 }
 
 /*
- * Log a server response to a client to the buffer
+ * Log a ready for query server response to a client to the buffer
  */
-void log_response_to_buffer(bool success, usec_t latency, uint32_t rsp_len, PgSocket *client)
+void log_ready_for_query_to_buffer(bool success, usec_t latency, PgSocket *client, PktHdr *pkt)
 {
   uint32_t net_client_id = htonl(client->client_id),
-           net_latency, net_rsp_len,
-           pkt_len = sizeof(uint8_t) + sizeof(uint32_t) * 2,
-           net_pkt_len = htonl(pkt_len);
+           net_latency;
 
   if (cf_shutdown)
     return;
-
-  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(char) + pkt_len))
+  
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_latency) + pkt->len + sizeof(uint8_t)))
     return;
 
   net_latency = htonl(latency > UINT32_MAX ? UINT32_MAX : latency);
-  net_rsp_len = htonl(rsp_len);
 
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);
@@ -238,17 +234,12 @@ void log_response_to_buffer(bool success, usec_t latency, uint32_t rsp_len, PgSo
   memcpy(buf + len, &net_latency, sizeof(net_latency));
   len += sizeof(net_latency);
 
-  memcpy(buf + len, &response_char, sizeof(char));
-  len += sizeof(char);
-
-  memcpy(buf + len, &net_pkt_len, sizeof(net_pkt_len));
-  len += sizeof(net_pkt_len);
+  memcpy(buf + len, pkt->data.data, pkt->len);
+  len += pkt->len;
 
   memcpy(buf + len, &success, sizeof(uint8_t));
   len += sizeof(uint8_t);
 
-  memcpy(buf + len, &net_rsp_len, sizeof(net_rsp_len));
-  len += sizeof(net_rsp_len);
 }
 
 /*

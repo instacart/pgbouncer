@@ -381,7 +381,7 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 				if (pkt->type == 'Z') {
 					log_ready_for_query_to_buffer(!server->saw_error, total, client, pkt);
 				} else if (pkt->type == 'C') {
-					log_command_complete_to_buffer(!server->saw_error, total, client, pkt);
+					log_command_complete_to_buffer(!server->saw_error, get_cached_time() - client->query_start, client, pkt);
 				}
 			}		
 

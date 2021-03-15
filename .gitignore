@@ -22,6 +22,7 @@
 /test/ssl/test.pid
 /test/ssl/TestCA1/
 /etc/pgbouncer.ini
+/var
 etc/pgbouncer.ini
 configure.ac
 .DS_Store

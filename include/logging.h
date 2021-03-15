@@ -17,5 +17,6 @@
 void log_setup(void);
 void log_connect_to_buffer(bool connected, PgSocket *client);
 void log_ready_for_query_to_buffer(bool success, usec_t latency, PgSocket *client, PktHdr *pkt);
+void log_command_complete_to_buffer(bool success, usec_t latency, PgSocket *client, PktHdr *pkt);
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client);
 void log_reload_to_buffer(void);

@@ -181,16 +181,6 @@ void log_connect_to_buffer(bool connected, PgSocket *client) {
   if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + sizeof(char) + pkt_len))
     return;
 
-  if (client->last_pkt > 0 && !connected) {
-    usec_t query_interval_usec = get_cached_time() - client->last_pkt;
-
-    if (query_interval_usec > UINT32_MAX) {
-      query_interval = UINT32_MAX; /* up to about an hour between queries */
-    } else {
-      query_interval = (uint32_t)query_interval_usec;
-    }
-  }
-
   net_query_interval = htonl(query_interval);
 
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));

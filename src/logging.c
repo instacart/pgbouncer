@@ -175,34 +175,34 @@ void log_connect_to_buffer(bool connected, PgSocket *client) {
            pkt_len = sizeof(uint8_t) + sizeof(uint32_t),
            net_pkt_len = htonl(pkt_len);
 
-  log_info("log_connect_to_buffer");
+  log_debug("log_connect_to_buffer");
 
   if (cf_shutdown)
     return;
 
-  log_info("log_pkt_to_buffer: log_ensure_buffer_space");
+  log_debug("log_pkt_to_buffer: log_ensure_buffer_space");
   if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + sizeof(char) + pkt_len + sizeof(uint8_t)))
     return;
 
   net_query_interval = htonl(query_interval);
 
-  log_info("log_pkt_to_buffer: client_id");
+  log_debug("log_pkt_to_buffer: client_id");
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);
 
-  log_info("log_pkt_to_buffer: query_interval");
+  log_debug("log_pkt_to_buffer: query_interval");
   memcpy(buf + len, &net_query_interval, sizeof(net_query_interval));
   len += sizeof(net_query_interval);
 
-  log_info("log_pkt_to_buffer: connect_char");
+  log_debug("log_pkt_to_buffer: connect_char");
   memcpy(buf + len, &connect_char, sizeof(char));
   len += sizeof(char);
 
-  log_info("log_pkt_to_buffer: pkt_len");
+  log_debug("log_pkt_to_buffer: pkt_len");
   memcpy(buf + len, &net_pkt_len, sizeof(net_pkt_len));
   len += sizeof(net_pkt_len);
 
-  log_info("log_pkt_to_buffer: connected");
+  log_debug("log_pkt_to_buffer: connected");
   memcpy(buf + len, &connected, sizeof(uint8_t));
   len += sizeof(uint8_t);
 }
@@ -214,13 +214,13 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   uint32_t net_client_id = htonl(client->client_id),
            query_interval = 0, net_query_interval;
 
-  log_info("log_pkt_to_buffer");
+  log_debug("log_pkt_to_buffer");
 
   /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)
     return;
 
-  log_info("log_pkt_to_buffer: checking for incomplete_pkt");
+  log_debug("log_pkt_to_buffer: checking for incomplete_pkt");
   if (incomplete_pkt(pkt))
     return;
 
@@ -246,13 +246,13 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    * pkt->len = packet size
    * + 16 bytes of metadata
    */
-  log_info("log_pkt_to_buffer: log_ensure_buffer_space");
+  log_debug("log_pkt_to_buffer: log_ensure_buffer_space");
 
   if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + pkt->len))
     return;
 
   /* record intervals between packets */
-  log_info("log_pkt_to_buffer: calc interval");
+  log_debug("log_pkt_to_buffer: calc interval");
 
   if (client->last_pkt > 0) {
     usec_t query_interval_usec = get_cached_time() - client->last_pkt;
@@ -279,16 +279,16 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    *             first byte of the packet is the type
    *             next 4 bytes of the packet are the length
    */
-  log_info("log_pkt_to_buffer: writing net_client_id");
+  log_debug("log_pkt_to_buffer: writing net_client_id");
 
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);
 
-  log_info("log_pkt_to_buffer: writing net_query_interval");
+  log_debug("log_pkt_to_buffer: writing net_query_interval");
   memcpy(buf + len, &net_query_interval, sizeof(net_query_interval));
   len += sizeof(net_query_interval);
 
-  log_info("log_pkt_to_buffer: writing pkt data");
+  log_debug("log_pkt_to_buffer: writing pkt data");
   memcpy(buf + len, pkt->data.data, pkt->len);
   len += pkt->len;
 }
@@ -385,7 +385,7 @@ static void log_flush_buffer(void) {
   fsync(fd);
   close(fd);
 
-  // log_info("Flushed %lu bytes to packet log file: %s", len, next_fname);
+  // log_debug("Flushed %lu bytes to packet log file: %s", len, next_fname);
 
   /* Clear the buffer since it's an append buffer */
   memset(buf, 0, len);

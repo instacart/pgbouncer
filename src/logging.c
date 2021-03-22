@@ -141,7 +141,8 @@ static void log_shutdown(void) {
  * Log packet into the buffer.
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
-  uint32_t net_client_id = htonl(client->client_id);
+  uint32_t net_client_id = htonl(client->client_id),
+           query_interval = 0, net_query_interval;;
 
   log_info("log_pkt_to_buffer");
 
@@ -150,7 +151,6 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
     return;
 
   log_info("log_pkt_to_buffer: checking for incomplete_pkt");
-
   if (incomplete_pkt(pkt))
     return;
 
@@ -193,13 +193,27 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);
 
-  log_info("log_pkt_to_buffer: writing interval (0)");
+  log_info("log_pkt_to_buffer: calc interval");
+  /* record intervals between packets */
+  if (client->last_pkt > 0) {
+    usec_t query_interval_usec = get_cached_time() - client->last_pkt;
 
-  memcpy(buf + len, 0, 4);
-  len += 4;
+    if (query_interval_usec > UINT32_MAX) {
+      query_interval = UINT32_MAX; /* up to about an hour between queries */
+    } else {
+      query_interval = (uint32_t)query_interval_usec;
+    }
+  }
+
+  client->last_pkt = get_cached_time();
+  net_query_interval = htonl(query_interval);
+
+  log_info("log_pkt_to_buffer: write interval");
+
+  memcpy(buf + len, &net_query_interval, sizeof(net_query_interval));
+  len += sizeof(net_query_interval);
 
   log_info("log_pkt_to_buffer: writing pkt->data.data");
-
   memcpy(buf + len, pkt->data.data, pkt->len);
   len += pkt->len;
 }
@@ -305,8 +319,6 @@ static void log_flush_buffer(void) {
  * Callback for the event loop.
  */
 void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg) {
-  log_info("log_buffer_flush_cb");
-
   /* Handle shutdown (best-effort since we are not the only event) */
   if (cf_shutdown && cf_log_packets) {
     log_flush_buffer();

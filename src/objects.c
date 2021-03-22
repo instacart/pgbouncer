@@ -89,6 +89,7 @@ static void construct_client(void *obj)
 	list_init(&client->head);
 	sbuf_init(&client->sbuf, client_proto);
 	client->state = CL_FREE;
+	client->last_pkt = 0;
 
 	/* Will collide after 4.2 billion connections, so reasonably low chance. */
 	client->client_id = client_ids++;
@@ -1241,6 +1242,7 @@ PgSocket *accept_client(int sock, bool is_unix)
 
 	client->connect_time = client->request_time = get_cached_time();
 	client->query_start = 0;
+	client->last_pkt = 0;
 
 	/* FIXME: take local and remote address from pool_accept() */
 	fill_remote_addr(client, sock, is_unix);

@@ -181,7 +181,7 @@ void log_connect_to_buffer(bool connected, PgSocket *client) {
     return;
 
   log_info("log_pkt_to_buffer: log_ensure_buffer_space");
-  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + sizeof(char) + pkt_len) + sizeof(uint8_t))
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + sizeof(char) + pkt_len + sizeof(uint8_t)))
     return;
 
   net_query_interval = htonl(query_interval);

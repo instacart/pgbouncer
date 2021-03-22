@@ -241,13 +241,13 @@ static void log_flush_buffer(void) {
   /*
   This is commented to allow pgbouncer to overwrite existing files
   It means we may lose packets, but we guarantee the buffer is being flushed (other wise it will be kept full and stop logging anyways)
+  */
 
   if (!log_ensure_file_dont_exist(next_fname))
     return;
 
   if (!log_ensure_file_dont_exist(next_fname_available))
     return;
-  */
 
   fd = open(next_fname, O_EXCL | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
   if (fd == -1) {

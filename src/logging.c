@@ -81,6 +81,8 @@ static bool log_ensure_buffer_space(uint32_t n);
  * Flush the buffer every .1 of a second
  */
 void log_setup(void) {
+  log_info("log_setup");
+  
   if (event_assign(&buffer_drain_ev, pgb_event_base, -1, EV_PERSIST, log_buffer_flush_cb, NULL) == -1) {
     log_info("Could not assign event: %s", strerror(errno));
     return;
@@ -96,6 +98,8 @@ void log_setup(void) {
  * Initialize the packet logger.
  */
 void log_init(void) {
+  log_info("log_init");
+
   if (buf != NULL)
     return;
 
@@ -118,6 +122,8 @@ void log_init(void) {
  * Shutdown the packet logger.
  */
 static void log_shutdown(void) {
+  log_info("log_shutdown");
+
   if (buf == NULL)
     return;
 
@@ -136,6 +142,9 @@ static void log_shutdown(void) {
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   uint32_t net_client_id = htonl(client->client_id);
+
+  log_info("log_pkt_to_buffer");
+  return;
 
   /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)
@@ -191,6 +200,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
  * Check if we have space in the buffer to append n bytes
  */
 static bool log_ensure_buffer_space(uint32_t n) {
+  log_info("log_ensure_buffer_space");
   if (len + n > LOG_BUFFER_SIZE) {
     log_info("Warning - Buffer full - current buffer size: %zu, bytes required: %u", len, n);
     return false;
@@ -202,6 +212,7 @@ static bool log_ensure_buffer_space(uint32_t n) {
  * Check if the files we are going to touch dont exist
  */
 static bool log_ensure_file_dont_exist(char *file) {
+  log_info("log_ensure_file_dont_exist");
   struct stat info;
   if (stat(file, &info) != -1) {
     char time[50];
@@ -227,6 +238,8 @@ static bool log_ensure_file_dont_exist(char *file) {
  */
 static void log_flush_buffer(void) {
   int fd;
+
+  log_info("log_flush_buffer");
 
   /* Don't waste time on an empty buffer - no traffic on the bouncer */
   if (len < 1)
@@ -286,6 +299,8 @@ static void log_flush_buffer(void) {
  * Callback for the event loop.
  */
 void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg) {
+  log_info("log_buffer_flush_cb");
+
   /* Handle shutdown (best-effort since we are not the only event) */
   if (cf_shutdown && cf_log_packets) {
     log_flush_buffer();

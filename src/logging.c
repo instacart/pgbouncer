@@ -141,6 +141,9 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   if (cf_shutdown)
     return;
 
+  if (incomplete_pkt(pkt))
+    return;
+
   /* Buffer full, drop the packet logging on the floor.
    * No logging since this function is called for each incoming packet.
    */

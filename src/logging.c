@@ -220,29 +220,6 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   if (cf_shutdown)
     return;
 
-  /* record intervals between packets */
-  if (client->last_pkt > 0) {
-    usec_t query_interval_usec = get_cached_time() - client->last_pkt;
-
-    if (query_interval_usec > UINT32_MAX) {
-      query_interval = UINT32_MAX; /* up to about an hour between queries */
-    } else {
-      query_interval = (uint32_t)query_interval_usec;
-    }
-  }
-
-  client->last_pkt = get_cached_time();
-
-  net_query_interval = htonl(query_interval);
-  /* Buffer full, drop the packet logging on the floor.
-   * No logging since this function is called for each incoming packet.
-   *
-   * pkt->len = packet size
-   * + 16 bytes of metadata
-   */
-  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + pkt->len))
-    return;
-
   /* Log only supported packets.
    * P - prepared statement
    * B - bind params to prepared statement
@@ -258,6 +235,30 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
     default:
       return;
   }
+
+  /* Buffer full, drop the packet logging on the floor.
+   * No logging since this function is called for each incoming packet.
+   *
+   * pkt->len = packet size
+   * + 16 bytes of metadata
+   */
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + pkt->len))
+    return;
+
+  /* record intervals between packets */
+  if (client->last_pkt > 0) {
+    usec_t query_interval_usec = get_cached_time() - client->last_pkt;
+
+    if (query_interval_usec > UINT32_MAX) {
+      query_interval = UINT32_MAX; /* up to about an hour between queries */
+    } else {
+      query_interval = (uint32_t)query_interval_usec;
+    }
+  }
+
+  client->last_pkt = get_cached_time();
+
+  net_query_interval = htonl(query_interval);
 
   /*
    * Write the packet to the log file.
@@ -297,6 +298,7 @@ static bool log_ensure_buffer_space(uint32_t n) {
   return true;
 }
 
+
 /*
  * Check if the files we are going to touch dont exist - if they do, disable logging
  */
@@ -306,16 +308,18 @@ static bool log_ensure_file_dont_exist(char *file) {
     char time[50];
     strftime(time, 50, "%Y-%m-%d %H:%M:%S", localtime(&info.st_mtime));
     log_info("Warning - Packet log file exists: %s, size: %lld bytes, modified_at: %s", file, info.st_size, time);
-    /*
-    don't disable logging
+
+    // don't disable logging
     
-    cf_log_packets = 0;
-    log_shutdown();
-    */    
+    // cf_log_packets = 0;
+    // log_shutdown();
+
     return false;
   }
   return true;
 }
+
+
 
 /*
  * Flush the packets to disk.
@@ -349,13 +353,12 @@ static void log_flush_buffer(void) {
   /*
   This is commented to allow pgbouncer to overwrite existing files
   It means we may lose packets, but we guarantee the buffer is being flushed (other wise it will be kept full and stop logging anyways)
-
+  */
   if (!log_ensure_file_dont_exist(next_fname))
     return;
 
   if (!log_ensure_file_dont_exist(next_fname_available))
-    return;
-  */
+    return; 
 
   fd = open(next_fname, O_EXCL | O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
   if (fd == -1) {

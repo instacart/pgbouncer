@@ -82,7 +82,7 @@ static bool log_ensure_buffer_space(uint32_t n);
  */
 void log_setup(void) {
   log_info("log_setup");
-  
+
   if (event_assign(&buffer_drain_ev, pgb_event_base, -1, EV_PERSIST, log_buffer_flush_cb, NULL) == -1) {
     log_info("Could not assign event: %s", strerror(errno));
     return;
@@ -144,11 +144,12 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   uint32_t net_client_id = htonl(client->client_id);
 
   log_info("log_pkt_to_buffer");
-  return;
 
   /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)
     return;
+
+  log_info("log_pkt_to_buffer: checking for incomplete_pkt");
 
   if (incomplete_pkt(pkt))
     return;
@@ -156,6 +157,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   /* Buffer full, drop the packet logging on the floor.
    * No logging since this function is called for each incoming packet.
    */
+  log_info("log_pkt_to_buffer: checking for log_ensure_buffer_space");
   if (!log_ensure_buffer_space(sizeof(net_client_id) + 4 + pkt->len))
     return;
 
@@ -175,6 +177,8 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
       return;
   }
 
+  log_info("log_pkt_to_buffer: writing net_client_id");
+
   /*
    * Write the packet to the log file.
    *
@@ -189,8 +193,12 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);
 
+  log_info("log_pkt_to_buffer: writing interval (0)");
+
   memcpy(buf + len, 0, 4);
   len += 4;
+
+  log_info("log_pkt_to_buffer: writing pkt->data.data");
 
   memcpy(buf + len, pkt->data.data, pkt->len);
   len += pkt->len;
@@ -238,8 +246,6 @@ static bool log_ensure_file_dont_exist(char *file) {
  */
 static void log_flush_buffer(void) {
   int fd;
-
-  log_info("log_flush_buffer");
 
   /* Don't waste time on an empty buffer - no traffic on the bouncer */
   if (len < 1)

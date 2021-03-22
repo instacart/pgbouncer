@@ -499,7 +499,6 @@ static void handle_sighup(int sock, short flags, void *arg)
 	log_info("got SIGHUP, re-reading config");
 	sd_notify(0, "RELOADING=1");
 	load_config();
-	log_reload_to_buffer();
 	sd_notify(0, "READY=1");
 }
 #endif

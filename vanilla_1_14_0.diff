@@ -1,0 +1,76 @@
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/Makefile /Users/felipeandrade/pgbouncer/Makefile
+13d12
+< 	src/logging.c \
+41d39
+< 	include/logging.h \
+Only in /Users/felipeandrade/pgbouncer-instacart: config.guess
+Only in /Users/felipeandrade/pgbouncer-instacart: config.log
+Only in /Users/felipeandrade/pgbouncer-instacart: config.mak
+Only in /Users/felipeandrade/pgbouncer-instacart: config.status
+Only in /Users/felipeandrade/pgbouncer-instacart: config.sub
+Only in /Users/felipeandrade/pgbouncer-instacart: configure
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/include/bouncer.h /Users/felipeandrade/pgbouncer/include/bouncer.h
+126d125
+< #include "logging.h"
+371d369
+< 	uint32_t client_id; /* A "unique" id of the client */
+531,532d528
+< extern int cf_log_packets;
+< extern char *cf_log_packets_file;
+Only in /Users/felipeandrade/pgbouncer-instacart/include: logging.h
+Only in /Users/felipeandrade/pgbouncer-instacart: install-sh
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: COPYRIGHT
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: Makefile
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: README
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: autogen.sh
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: build.mk.in
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: build_msvc.mk
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: config.mak.in
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: configure.ac
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: find_modules.sh
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: m4
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: mk
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: test
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: usual
+Only in /Users/felipeandrade/pgbouncer-instacart: pgbouncer
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/admin.c /Users/felipeandrade/pgbouncer/src/admin.c
+24d23
+< #include "logging.h"
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/client.c /Users/felipeandrade/pgbouncer/src/client.c
+26d25
+< #include "logging.h"
+897,900d895
+< 	/* log the query, if needed */
+< 	if (cf_log_packets)
+< 		log_pkt_to_buffer(pkt, client);
+< 
+Only in /Users/felipeandrade/pgbouncer-instacart/src: logging.c
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/main.c /Users/felipeandrade/pgbouncer/src/main.c
+24d23
+< #include "logging.h"
+157,158d155
+< int cf_log_packets;
+< char *cf_log_packets_file;
+292,293d288
+< CF_ABS("log_packets", CF_INT, cf_log_packets, 0, "0"),
+< CF_ABS("log_packets_file", CF_STR, cf_log_packets_file, 0, "/tmp/pktlog"),
+961d955
+< 	log_setup();
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/objects.c /Users/felipeandrade/pgbouncer/src/objects.c
+67,71d66
+< /*
+<  * Count clients that are coming in to give them "unique" ids.
+<  */
+< static uint32_t client_ids = 0;
+< 
+92,94d86
+< 
+< 	/* Will collide after 4.2 billion connections, so reasonably low chance. */
+< 	client->client_id = client_ids++;
+105d96
+< 	server->client_id = 0;
+1244d1234
+< 	client->last_pkt = 0;
+Only in /Users/felipeandrade/pgbouncer-instacart: vanilla.diff
+Only in /Users/felipeandrade/pgbouncer-instacart: vanilla_1_14_0.diff
+Only in /Users/felipeandrade/pgbouncer-instacart: var

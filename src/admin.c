@@ -971,7 +971,6 @@ static bool admin_cmd_reload(PgSocket *admin, const char *arg)
 		return admin_error(admin, "admin access needed");
 
 	log_info("RELOAD command issued");
-	log_reload_to_buffer();
 	load_config();
 	return admin_ready(admin, "RELOAD");
 }

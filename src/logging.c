@@ -63,9 +63,6 @@
 #define FILE_ID_MAX 24
 static uint16_t file_id = 0;
 
-static const char *reload_command = "RELOAD";
-static const char connect_char = '!';
-
 /* Flush packets 4 times per second - every 250ms */
 static struct timeval buffer_drain_period = {0, USEC / 4};
 static struct event buffer_drain_ev;
@@ -132,115 +129,22 @@ static void log_shutdown(void) {
   log_info("Packet logging shut down");
 }
 
-/*
- * Log reload command to buffer.
- */
-void log_reload_to_buffer(void) {
-  /* reload command len + pkt length + type */
-  int reload_len = strlen(reload_command);
-  uint32_t pkt_len = htonl(reload_len + sizeof(uint32_t));
 
-  /* Reload again if you don't see changes because of this */
-  if (!log_ensure_buffer_space(reload_len + sizeof(uint32_t))) {
-    log_info("Can't issue RELOAD command to replayer, buffer full");
-    return;
-  }
-
-  /* empty client id */
-  memset(buf + len, 0, sizeof(uint32_t));
-  len += sizeof(uint32_t);
-
-  /* 0 interval */
-  memset(buf + len, 0, sizeof(uint32_t));
-  len += sizeof(uint32_t);
-
-  /* no type */
-  memset(buf + len, 0, sizeof(char));
-  len += sizeof(char);
-
-  /* length of the reload command */
-  memcpy(buf + len, &pkt_len, sizeof(uint32_t));
-  len += sizeof(uint32_t);
-
-  /* reload itself */
-  strncpy(buf + len, reload_command, reload_len);
-  len += reload_len;
-
-  log_info("Sent RELOAD command to replayer");
-}
-
-void log_connect_to_buffer(bool connected, PgSocket *client) {
-  uint32_t net_client_id = htonl(client->client_id),
-           query_interval = 0, net_query_interval,
-           pkt_len = sizeof(uint8_t) + sizeof(uint32_t),
-           net_pkt_len = htonl(pkt_len);
-
-  if (cf_shutdown)
-    return;
-
-  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + sizeof(char) + pkt_len))
-    return;
-
-  if (client->last_pkt > 0 && !connected) {
-    usec_t query_interval_usec = get_cached_time() - client->last_pkt;
-
-    if (query_interval_usec > UINT32_MAX) {
-      query_interval = UINT32_MAX; /* up to about an hour between queries */
-    } else {
-      query_interval = (uint32_t)query_interval_usec;
-    }
-  }
-
-  net_query_interval = htonl(query_interval);
-
-  memcpy(buf + len, &net_client_id, sizeof(net_client_id));
-  len += sizeof(net_client_id);
-
-  memcpy(buf + len, &net_query_interval, sizeof(net_query_interval));
-  len += sizeof(net_query_interval);
-
-  memcpy(buf + len, &connect_char, sizeof(char));
-  len += sizeof(char);
-
-  memcpy(buf + len, &net_pkt_len, sizeof(net_pkt_len));
-  len += sizeof(net_pkt_len);
-
-  memcpy(buf + len, &connected, sizeof(uint8_t));
-  len += sizeof(uint8_t);
-}
 
 /*
  * Log packet into the buffer.
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
-  uint32_t net_client_id = htonl(client->client_id),
-           query_interval = 0, net_query_interval;
+  uint32_t net_client_id = htonl(client->client_id);
 
   /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)
     return;
 
-  /* record intervals between packets */
-  if (client->last_pkt > 0) {
-    usec_t query_interval_usec = get_cached_time() - client->last_pkt;
-
-    if (query_interval_usec > UINT32_MAX) {
-      query_interval = UINT32_MAX; /* up to about an hour between queries */
-    } else {
-      query_interval = (uint32_t)query_interval_usec;
-    }
-  }
-
-  client->last_pkt = get_cached_time();
-
-  net_query_interval = htonl(query_interval);
   /* Buffer full, drop the packet logging on the floor.
    * No logging since this function is called for each incoming packet.
-   *
-   * pkt->len = packet size
-   * + 16 bytes of metadata
    */
-  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + pkt->len))
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + 4 + pkt->len))
     return;
 
   /* Log only supported packets.
@@ -273,32 +177,26 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);
 
-  memcpy(buf + len, &net_query_interval, sizeof(net_query_interval));
-  len += sizeof(net_query_interval);
+  memcpy(buf + len, 0, 4);
+  len += 4;
 
   memcpy(buf + len, pkt->data.data, pkt->len);
   len += pkt->len;
 }
 
 /*
- * Check if we have space in the buffer to append n bytes - if we don't, disable logging
+ * Check if we have space in the buffer to append n bytes
  */
 static bool log_ensure_buffer_space(uint32_t n) {
   if (len + n > LOG_BUFFER_SIZE) {
     log_info("Warning - Buffer full - current buffer size: %zu, bytes required: %u", len, n);
-    /*
-    don't disable logging
-
-    cf_log_packets = 0;
-    log_shutdown();
-    */
     return false;
   }
   return true;
 }
 
 /*
- * Check if the files we are going to touch dont exist - if they do, disable logging
+ * Check if the files we are going to touch dont exist
  */
 static bool log_ensure_file_dont_exist(char *file) {
   struct stat info;
@@ -306,12 +204,6 @@ static bool log_ensure_file_dont_exist(char *file) {
     char time[50];
     strftime(time, 50, "%Y-%m-%d %H:%M:%S", localtime(&info.st_mtime));
     log_info("Warning - Packet log file exists: %s, size: %lld bytes, modified_at: %s", file, info.st_size, time);
-    /*
-    don't disable logging
-    
-    cf_log_packets = 0;
-    log_shutdown();
-    */    
     return false;
   }
   return true;
@@ -338,11 +230,11 @@ static void log_flush_buffer(void) {
     return;
 
   /* In-flight write file */
-  char next_fname[strlen(cf_log_packets_file)+9];   /* .001.w */
+  char next_fname[strlen(cf_log_packets_file)+9];   /* .00001.w */
   snprintf(next_fname, strlen(cf_log_packets_file)+9, "%s.%05d.w", cf_log_packets_file, file_id);
 
   /* Available file */
-  char next_fname_available[strlen(cf_log_packets_file) + 7];   /* .001 */
+  char next_fname_available[strlen(cf_log_packets_file) + 7];   /* .00001 */
   snprintf(next_fname_available, strlen(cf_log_packets_file)+7, "%s.%05d", cf_log_packets_file, file_id);
 
   /* Check both files */
@@ -357,7 +249,7 @@ static void log_flush_buffer(void) {
     return;
   */
 
-  fd = open(next_fname, O_EXCL | O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
+  fd = open(next_fname, O_EXCL | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
   if (fd == -1) {
     log_info("Could not open packet log file: %s", strerror(errno));
     return;

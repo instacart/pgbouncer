@@ -1,0 +1,1283 @@
+# ❯ diff -r -w -x ".*" -x etc -x doc ~/pgbouncer-instacart ~/pgbouncer > vanilla.diff
+
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/Makefile /Users/felipeandrade/pgbouncer/Makefile
+13d12
+< 	src/logging.c \
+41d39
+< 	include/logging.h \
+140,161c138,148
+< w32arch = i686-w64-mingw32
+< w32zip = $(PACKAGE_TARNAME)-$(PACKAGE_VERSION)-win32.zip
+< zip: configure clean
+< 	rm -rf buildexe
+< 	mkdir buildexe
+< 	cd buildexe \
+< 		&& ../configure --host=$(w32arch) --disable-debug \
+< 			--without-openssl \
+< 			--without-cares \
+< 			--enable-evdns \
+< 		&& $(MAKE) \
+< 		&& $(w32arch)-strip pgbouncer.exe pgbevent.dll \
+< 		&& zip pgbouncer.zip pgbouncer.exe pgbevent.dll doc/*.html
+< 	zip -l buildexe/pgbouncer.zip etc/pgbouncer.ini etc/userlist.txt
+< 	mv buildexe/pgbouncer.zip $(w32zip)
+< 
+< zip-up: $(w32zip)
+< 	rsync $(w32zip) pgf:web/pgbouncer/htdocs/win32/
+< 
+< tgz = $(PACKAGE_TARNAME)-$(PACKAGE_VERSION).tar.gz
+< tgz-up: $(tgz)
+< 	rsync $(tgz) pgf:web/pgbouncer/htdocs/testing/
+---
+> w32zip = $(PACKAGE_TARNAME)-$(PACKAGE_VERSION)-windows-$(host_cpu).zip
+> zip: $(w32zip)
+> 
+> $(w32zip): pgbouncer.exe pgbevent.dll etc/pgbouncer.ini etc/userlist.txt README.md COPYRIGHT
+> 	rm -rf $(basename $@)
+> 	mkdir $(basename $@)
+> 	cp $^ $(basename $@)
+> 	$(STRIP) $(addprefix $(basename $@)/,$(filter %.exe %.dll,$(^F)))
+> 	zip -MM $@ $(addprefix $(basename $@)/,$(filter %.exe %.dll,$(^F)))
+> # NB: zip -l for text files for end-of-line conversion
+> 	zip -MM -l $@ $(addprefix $(basename $@)/,$(filter-out %.exe %.dll,$(^F)))
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/NEWS.md /Users/felipeandrade/pgbouncer/NEWS.md
+3a4,52
+> PgBouncer 1.15.x
+> ----------------
+> 
+> **2020-11-19  -  PgBouncer 1.15.0  -  "Ich hab noch einen Koffer in Berlin"**
+> 
+> - Features
+>   * Improve authentication failure reporting.  The authentication
+>     failure messages sent to the client now only state that
+>     authentication failed but give no further details.  Details are
+>     available in the PgBouncer log.  Also, if the requested user does
+>     not exist, the authentication is still processed to the end and
+>     will result in the same generic failure message.  All this
+>     prevents clients from probing the PgBouncer instance for user
+>     names and other authentication-related insights.  This is similar
+>     to how PostgreSQL behaves.
+>   * Don't log anything if client disconnects immediately.  This avoids
+>     log spam when monitoring systems just open a TCP/IP connection but
+>     don't send anything before disconnecting.
+>   * Use systemd journal for logging when in use.  When we detect that
+>     stderr is going to the systemd journal, we use systemd native
+>     functions for log output.  This avoids printing duplicate
+>     timestamp and pid, thus making the log a bit cleaner.  Also, this
+>     adds metadata such as the severity to the logs, so that if the
+>     journal gets sent on to syslog, the messages have useful metadata
+>     attached.
+>   * A subset of the test suite can now be run under Windows.
+>   * `SHOW CONFIG` now also shows the default values of the settings.
+> 
+> - Fixes
+>   * Fix the `so_reuseport` option on FreeBSD.  The original code in
+>     PgBouncer 1.12.0 didn't actually work on FreeBSD.
+>     ([#504](https://github.com/pgbouncer/pgbouncer/pull/504))
+>   * Repair compilation on systems with older systemd versions.  This
+>     was broken in 1.14.0.
+>     ([#505](https://github.com/pgbouncer/pgbouncer/issues/505))
+>   * The makefile target to build Windows binary zip packages has been
+>     repaired.
+>   * Long command-line options now also work on Windows.
+>   * Fix the behavior of the global `auth_user` setting.  The old
+>     behavior was confusing and fragile as it depended on the order in
+>     the configuration file.  This is no longer the
+>     case. ([#391](https://github.com/pgbouncer/pgbouncer/issues/391),
+>     [#393](https://github.com/pgbouncer/pgbouncer/issues/393))
+> 
+> - Cleanups
+>   * Improve test stability and portability.
+>   * Modernize Autoconf-related code.
+>   * Disable deprecation compiler warnings from OpenSSL 3.0.0.
+> 
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/README.md /Users/felipeandrade/pgbouncer/README.md
+51c51
+< | getaddrinfo, libc          | no       | yes (3)   | yes        | no             | N/A on Windows, requires pthreads     |
+---
+> | getaddrinfo, libc          | no       | yes (3)   | yes        | no             | requires pthreads                     |
+Only in /Users/felipeandrade/pgbouncer-instacart: config.guess
+Only in /Users/felipeandrade/pgbouncer-instacart: config.log
+Only in /Users/felipeandrade/pgbouncer-instacart: config.mak
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/config.mak.in /Users/felipeandrade/pgbouncer/config.mak.in
+72d71
+< have_libevent = @have_libevent@
+73a73,74
+> 
+> host_cpu = @host_cpu@
+Only in /Users/felipeandrade/pgbouncer-instacart: config.status
+Only in /Users/felipeandrade/pgbouncer-instacart: config.sub
+Only in /Users/felipeandrade/pgbouncer-instacart: configure
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/configure.ac /Users/felipeandrade/pgbouncer/configure.ac
+4c4
+<         [1.14.0],
+---
+>         [1.15.0],
+8c8
+< AC_CONFIG_HEADER(lib/usual/config.h)
+---
+> AC_CONFIG_HEADERS([lib/usual/config.h])
+63c63
+<   AC_HELP_STRING([--with-pam], [build with PAM support]),
+---
+>   AS_HELP_STRING([--with-pam], [build with PAM support]),
+85c85
+<             [AC_HELP_STRING([--with-systemd], [Build with systemd support])],
+---
+>             [AS_HELP_STRING([--with-systemd], [build with systemd support])],
+108c108
+<   AC_HELP_STRING([--with-cares@<:@=PREFIX@:>@], [build with c-ares support]),
+---
+>   AS_HELP_STRING([--with-cares@<:@=PREFIX@:>@], [build with c-ares support]),
+146c146
+<   AC_HELP_STRING([--with-udns@<:@=PREFIX@:>@], [build with udns support]),
+---
+>   AS_HELP_STRING([--with-udns@<:@=PREFIX@:>@], [build with udns support]),
+179c179
+< AC_ARG_ENABLE(evdns, AC_HELP_STRING([--disable-evdns], [do not use libevent for DNS lookups]),
+---
+> AC_ARG_ENABLE(evdns, AS_HELP_STRING([--disable-evdns], [do not use libevent for DNS lookups]),
+207c207,208
+< AC_OUTPUT([config.mak])
+---
+> AC_CONFIG_FILES([config.mak])
+> AC_OUTPUT
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/include/bouncer.h /Users/felipeandrade/pgbouncer/include/bouncer.h
+48d47
+< #define sd_listen_fds_with_names(ue, n) (0)
+126d124
+< #include "logging.h"
+318a317
+> 	bool mock_auth;			/* not a real user, only for mock auth */
+371d369
+< 	uint32_t client_id; /* A "unique" id of the client */
+376c374
+< 	PgUser *auth_user;	/* presented login, for client it may differ from pool->user */
+---
+> 	PgUser *login_user;	/* presented login, for client it may differ from pool->user */
+408d405
+< 	usec_t last_pkt;	/* last packet arrival */
+532,533d528
+< extern int cf_log_packets;
+< extern char *cf_log_packets_file;
+591c586
+< void config_for_each(void (*param_cb)(void *arg, const char *name, const char *val, bool reloadable),
+---
+> void config_for_each(void (*param_cb)(void *arg, const char *name, const char *val, const char *defval, bool reloadable),
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/include/client.h /Users/felipeandrade/pgbouncer/include/client.h
+21c21
+< bool handle_auth_response(PgSocket *client, PktHdr *pkt);
+---
+> bool handle_auth_query_response(PgSocket *client, PktHdr *pkt);
+Only in /Users/felipeandrade/pgbouncer-instacart/include: logging.h
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/include/sbuf.h /Users/felipeandrade/pgbouncer/include/sbuf.h
+57,58c57,58
+< 	int (*sbufio_recv)(SBuf *sbuf, void *buf, unsigned int len);
+< 	int (*sbufio_send)(SBuf *sbuf, const void *data, unsigned int len);
+---
+> 	ssize_t (*sbufio_recv)(SBuf *sbuf, void *buf, size_t len);
+> 	ssize_t (*sbufio_send)(SBuf *sbuf, const void *data, size_t len);
+94c94
+< bool sbuf_connect(SBuf *sbuf, const struct sockaddr *sa, int sa_len, int timeout_sec)  _MUSTCHECK;
+---
+> bool sbuf_connect(SBuf *sbuf, const struct sockaddr *sa, socklen_t sa_len, time_t timeout_sec)  _MUSTCHECK;
+109c109
+< bool sbuf_answer(SBuf *sbuf, const void *buf, unsigned len)  _MUSTCHECK;
+---
+> bool sbuf_answer(SBuf *sbuf, const void *buf, size_t len)  _MUSTCHECK;
+132c132
+< static inline int sbuf_op_recv(SBuf *sbuf, void *buf, unsigned int len)
+---
+> static inline ssize_t sbuf_op_recv(SBuf *sbuf, void *buf, size_t len)
+137c137
+< static inline int sbuf_op_send(SBuf *sbuf, const void *buf, unsigned int len)
+---
+> static inline ssize_t sbuf_op_send(SBuf *sbuf, const void *buf, size_t len)
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/include/scram.h /Users/felipeandrade/pgbouncer/include/scram.h
+68c68,69
+< char *build_server_first_message(ScramState *scram_state, const char *stored_secret);
+---
+> char *build_server_first_message(ScramState *scram_state,
+> 				 const char *username, const char *stored_secret);
+Only in /Users/felipeandrade/pgbouncer-instacart: install-sh
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: COPYRIGHT
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: Makefile
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: README
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: autogen.sh
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: build.mk.in
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: build_msvc.mk
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: config.mak.in
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: configure.ac
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: find_modules.sh
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: m4
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: mk
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: test
+Only in /Users/felipeandrade/pgbouncer-instacart/lib: usual
+Only in /Users/felipeandrade/pgbouncer-instacart: pgbouncer
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/admin.c /Users/felipeandrade/pgbouncer/src/admin.c
+24d23
+< #include "logging.h"
+266c265
+< 	int res;
+---
+> 	ssize_t res;
+341,342c340,341
+< 	if (sk->pool && sk->pool->db->auth_user && sk->auth_user && !find_user(sk->auth_user->name))
+< 		password = sk->auth_user->passwd;
+---
+> 	if (sk->pool && sk->pool->db->auth_user && sk->login_user && !find_user(sk->login_user->name))
+> 		password = sk->login_user->passwd;
+345,346c344,345
+< 	if (cf_auth_type == AUTH_PAM && !find_user(sk->auth_user->name))
+< 		password = sk->auth_user->passwd;
+---
+> 	if (cf_auth_type == AUTH_PAM && !find_user(sk->login_user->name))
+> 		password = sk->login_user->passwd;
+353c352
+< 			   sk->auth_user ? sk->auth_user->name : NULL,
+---
+> 			   sk->login_user ? sk->login_user->name : NULL,
+644c643
+< 			     sk->auth_user ? sk->auth_user->name : "(nouser)",
+---
+> 			     sk->login_user ? sk->login_user->name : "(nouser)",
+938c937
+< static void show_one_param(void *arg, const char *name, const char *val, bool reloadable)
+---
+> static void show_one_param(void *arg, const char *name, const char *val, const char *defval, bool reloadable)
+941c940
+< 	pktbuf_write_DataRow(buf, "sss", name, val,
+---
+> 	pktbuf_write_DataRow(buf, "ssss", name, val, defval,
+955c954
+< 	pktbuf_write_RowDescription(buf, "sss", "key", "value", "changeable");
+---
+> 	pktbuf_write_RowDescription(buf, "ssss", "key", "value", "default", "changeable");
+974d972
+< 	log_reload_to_buffer();
+1501c1499
+< 			client->auth_user = admin_pool->db->forced_user;
+---
+> 			client->login_user = admin_pool->db->forced_user;
+1515c1513
+< 			client->auth_user = admin_pool->db->forced_user;
+---
+> 			client->login_user = admin_pool->db->forced_user;
+1519c1517
+< 			client->auth_user = admin_pool->db->forced_user;
+---
+> 			client->login_user = admin_pool->db->forced_user;
+1528c1526
+< 	const char *username = client->auth_user->name;
+---
+> 	const char *username = client->login_user->name;
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/client.c /Users/felipeandrade/pgbouncer/src/client.c
+26d25
+< #include "logging.h"
+42c41
+< 	PgUser *user = client->auth_user;
+---
+> 	PgUser *user = client->login_user;
+44a44,46
+> 	if (user->mock_auth)
+> 		return false;
+> 
+46c48
+< 	if (!*passwd || !*user->passwd)
+---
+> 	if (!*user->passwd)
+95c97
+< static void start_auth_request(PgSocket *client, const char *username)
+---
+> static void start_auth_query(PgSocket *client, const char *username)
+137,138c139,140
+< 		disconnect_client(client, true, "TLS connection required");
+< 		return false;
+---
+> 		slog_error(client, "TLS connection required");
+> 		goto fail;
+141,142c143,144
+< 		disconnect_client(client, true, "TLS client certificate required");
+< 		return false;
+---
+> 		slog_error(client, "TLS client certificate required");
+> 		goto fail;
+143a146,147
+> 	if (client->login_user->mock_auth)
+> 		goto fail;
+146,148c150,152
+< 	if (!tls_peer_cert_contains_name(client->sbuf.tls, client->auth_user->name)) {
+< 		disconnect_client(client, true, "TLS certificate name mismatch");
+< 		return false;
+---
+> 	if (!tls_peer_cert_contains_name(client->sbuf.tls, client->login_user->name)) {
+> 		slog_error(client, "TLS certificate name mismatch");
+> 		goto fail;
+152a157,159
+> fail:
+> 	disconnect_client(client, true, "certificate authentication failed");
+> 	return false;
+159c166,168
+< 	if (!check_unix_peer_name(sbuf_socket(&client->sbuf), client->auth_user->name))
+---
+> 	if (client->login_user->mock_auth)
+> 		goto fail;
+> 	if (!check_unix_peer_name(sbuf_socket(&client->sbuf), client->login_user->name))
+169d177
+< 	PgUser *user = client->auth_user;
+173,177c181,189
+< 	/* pool user may be forced */
+< 	if (client->db->forced_user) {
+< 		user = client->db->forced_user;
+< 	}
+< 	client->pool = get_pool(client->db, user);
+---
+> 	if (!client->login_user->mock_auth) {
+> 		PgUser *pool_user;
+> 
+> 		if (client->db->forced_user)
+> 			pool_user = client->db->forced_user;
+> 		else
+> 			pool_user = client->login_user;
+> 
+> 		client->pool = get_pool(client->db, pool_user);
+181a194
+> 	}
+188c201
+< 				  client->db->name, client->auth_user->name, infobuf);
+---
+> 				  client->db->name, client->login_user->name, infobuf);
+191c204
+< 				  client->db->name, client->auth_user->name);
+---
+> 				  client->db->name, client->login_user->name);
+201c214
+< 	if (client->pool->db->admin) {
+---
+> 	if (client->pool && client->pool->db->admin) {
+212c225
+< 				client->db->name, client->auth_user->name);
+---
+> 				client->db->name, client->login_user->name);
+217c230
+< 		if (get_password_type(client->auth_user->passwd) == PASSWORD_TYPE_SCRAM_SHA_256)
+---
+> 		if (get_password_type(client->login_user->passwd) == PASSWORD_TYPE_SCRAM_SHA_256)
+225a239,240
+> 		ok = finish_client_login(client);
+> 		break;
+226a242,244
+> 		if (client->login_user->mock_auth)
+> 			disconnect_client(client, true, "\"trust\" authentication failed");
+> 		else
+300c318
+< 		client->auth_user = client->db->forced_user;
+---
+> 		client->login_user = client->db->forced_user;
+308,309c326,327
+< 		client->auth_user = add_pam_user(username, password);
+< 		if (!client->auth_user) {
+---
+> 		client->login_user = add_pam_user(username, password);
+> 		if (!client->login_user) {
+315,317c333,347
+< 		/* the user clients wants to log in as */
+< 		client->auth_user = find_user(username);
+< 		if (!client->auth_user && client->db->auth_user) {
+---
+> 		client->login_user = find_user(username);
+> 		if (!client->login_user) {
+> 			/*
+> 			 * If the login user specified by the client
+> 			 * does not exist, check if an auth_user is
+> 			 * set and if so send off an auth_query.  If
+> 			 * no auth_user is set for the db, see if the
+> 			 * global auth_user is set and use that.
+> 			 */
+> 			if (!client->db->auth_user && cf_auth_user) {
+> 				client->db->auth_user = find_user(cf_auth_user);
+> 				if (!client->db->auth_user)
+> 					client->db->auth_user = add_user(cf_auth_user, "");
+> 			}
+> 			if (client->db->auth_user) {
+319c349
+< 				client->auth_user = add_db_user(client->db, username, password);
+---
+> 					client->login_user = add_db_user(client->db, username, password);
+322c352
+< 			start_auth_request(client, username);
+---
+> 				start_auth_query(client, username);
+325,329c355,359
+< 		if (!client->auth_user) {
+< 			disconnect_client(client, true, "no such user: %s", username);
+< 			if (cf_log_connections)
+< 				slog_info(client, "login failed: db=%s user=%s", dbname, username);
+< 			return false;
+---
+> 
+> 			slog_info(client, "no such user: %s", username);
+> 			client->login_user = calloc(1, sizeof(*client->login_user));
+> 			client->login_user->mock_auth = true;
+> 			safe_strcpy(client->login_user->name, username, sizeof(client->login_user->name));
+331a362
+> 
+335c366
+< bool handle_auth_response(PgSocket *client, PktHdr *pkt) {
+---
+> bool handle_auth_query_response(PgSocket *client, PktHdr *pkt) {
+399,400c430,431
+< 		client->auth_user = add_db_user(client->db, user.name, user.passwd);
+< 		if (!client->auth_user) {
+---
+> 		client->login_user = add_db_user(client->db, user.name, user.passwd);
+> 		if (!client->login_user) {
+417c448
+< 		if (!client->auth_user) {
+---
+> 		if (!client->login_user) {
+419a451,461
+> 			/*
+> 			 * TODO: Currently no mock authentication when
+> 			 * using auth_query/auth_user; we just abort
+> 			 * with a revealing message to the client.
+> 			 * The main problem is that at this point we
+> 			 * don't know the original user name anymore
+> 			 * to do that.  As a workaround, the
+> 			 * auth_query could be written in a way that
+> 			 * it returns a fake user and password if the
+> 			 * requested user doesn't exist.
+> 			 */
+529c571
+< 	PgUser *user = client->auth_user;
+---
+> 	PgUser *user = client->login_user;
+544a587
+> 	if (!user->mock_auth) {
+553a597
+> 	}
+555c599
+< 	if (!build_server_first_message(&client->scram_state, user->passwd))
+---
+> 	if (!build_server_first_message(&client->scram_state, user->name, user->mock_auth ? NULL : user->passwd))
+600c644,645
+< 	if (!verify_client_proof(&client->scram_state, proof)) {
+---
+> 	if (!verify_client_proof(&client->scram_state, proof)
+> 	    || !client->login_user) {
+713c758
+< 		if (!client->auth_user) {
+---
+> 		if (!client->login_user) {
+770a816,824
+> 				/*
+> 				 * Don't allow an empty password; see
+> 				 * PostgreSQL recv_password_packet().
+> 				 */
+> 				if (!*passwd) {
+> 					disconnect_client(client, true, "empty password returned by client");
+> 					return false;
+> 				}
+> 
+897,900d950
+< 	/* log the query, if needed */
+< 	if (cf_log_packets)
+< 		log_pkt_to_buffer(pkt, client);
+< 
+924a975,981
+> 		/*
+> 		 * Don't log error if client disconnects right away,
+> 		 * could be monitoring probe.
+> 		 */
+> 		if (client->state == CL_LOGIN && mbuf_avail_for_read(data) == 0)
+> 			disconnect_client(client, false, NULL);
+> 		else
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/dnslookup.c /Users/felipeandrade/pgbouncer/src/dnslookup.c
+960c960,961
+< 		if (!opts.resolvconf_path)
+---
+> 		if (!opts.resolvconf_path) {
+> 			free(meta);
+961a963
+> 		}
+964a967
+> 		free(meta);
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/loader.c /Users/felipeandrade/pgbouncer/src/loader.c
+192c192
+< 	char *auth_username = cf_auth_user;
+---
+> 	char *auth_username = NULL;
+552c552
+< 		return NULL;
+---
+> 		return false;
+557c557
+< 		return NULL;
+---
+> 		return false;
+Only in /Users/felipeandrade/pgbouncer-instacart/src: logging.c
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/main.c /Users/felipeandrade/pgbouncer/src/main.c
+24d23
+< #include "logging.h"
+49a49,54
+> #ifdef WIN32
+> 	printf("Windows service registration:\n");
+> 	printf("  --regservice CONFIG_FILE [-U USERNAME [-P PASSWORD]]\n");
+> 	printf("  --unregservice CONFIG_FILE\n");
+> 	printf("\n");
+> #endif
+157,158d161
+< int cf_log_packets;
+< char *cf_log_packets_file;
+213a217,219
+> /*
+>  * Add new parameters in alphabetical order. This order is used by SHOW CONFIG.
+>  */
+215,231c221,222
+< CF_ABS("job_name", CF_STR, cf_jobname, CF_NO_RELOAD, "pgbouncer"),
+< #ifdef WIN32
+< CF_ABS("service_name", CF_STR, cf_jobname, CF_NO_RELOAD, NULL), /* alias for job_name */
+< #endif
+< CF_ABS("conffile", CF_STR, cf_config_file, 0, NULL),
+< CF_ABS("logfile", CF_STR, cf_logfile, 0, ""),
+< CF_ABS("pidfile", CF_STR, cf_pidfile, CF_NO_RELOAD, ""),
+< CF_ABS("listen_addr", CF_STR, cf_listen_addr, CF_NO_RELOAD, ""),
+< CF_ABS("listen_port", CF_INT, cf_listen_port, CF_NO_RELOAD, "6432"),
+< CF_ABS("so_reuseport", CF_INT, cf_so_reuseport, CF_NO_RELOAD, "0"),
+< CF_ABS("listen_backlog", CF_INT, cf_listen_backlog, CF_NO_RELOAD, "128"),
+< CF_ABS("unix_socket_dir", CF_STR, cf_unix_socket_dir, CF_NO_RELOAD, DEFAULT_UNIX_SOCKET_DIR),
+< #ifndef WIN32
+< CF_ABS("unix_socket_mode", CF_INT, cf_unix_socket_mode, CF_NO_RELOAD, "0777"),
+< CF_ABS("unix_socket_group", CF_STR, cf_unix_socket_group, CF_NO_RELOAD, ""),
+< #endif
+< CF_ABS("auth_type", CF_LOOKUP(auth_type_map), cf_auth_type, 0, "md5"),
+---
+> CF_ABS("admin_users", CF_STR, cf_admin_users, 0, ""),
+> CF_ABS("application_name_add_host", CF_INT, cf_application_name_add_host, 0, "0"),
+234d224
+< CF_ABS("auth_user", CF_STR, cf_auth_user, 0, NULL),
+236,250c226,227
+< CF_ABS("pool_mode", CF_LOOKUP(pool_mode_map), cf_pool_mode, 0, "session"),
+< CF_ABS("max_client_conn", CF_INT, cf_max_client_conn, 0, "100"),
+< CF_ABS("default_pool_size", CF_INT, cf_default_pool_size, 0, "20"),
+< CF_ABS("min_pool_size", CF_INT, cf_min_pool_size, 0, "0"),
+< CF_ABS("reserve_pool_size", CF_INT, cf_res_pool_size, 0, "0"),
+< CF_ABS("reserve_pool_timeout", CF_TIME_USEC, cf_res_pool_timeout, 0, "5"),
+< CF_ABS("max_db_connections", CF_INT, cf_max_db_connections, 0, "0"),
+< CF_ABS("max_user_connections", CF_INT, cf_max_user_connections, 0, "0"),
+< CF_ABS("syslog", CF_INT, cf_syslog, 0, "0"),
+< CF_ABS("syslog_facility", CF_STR, cf_syslog_facility, 0, "daemon"),
+< CF_ABS("syslog_ident", CF_STR, cf_syslog_ident, 0, "pgbouncer"),
+< #ifndef WIN32
+< CF_ABS("user", CF_STR, cf_username, CF_NO_RELOAD, NULL),
+< #endif
+< 
+---
+> CF_ABS("auth_type", CF_LOOKUP(auth_type_map), cf_auth_type, 0, "md5"),
+> CF_ABS("auth_user", CF_STR, cf_auth_user, 0, NULL),
+252,259d228
+< 
+< CF_ABS("server_reset_query", CF_STR, cf_server_reset_query, 0, "DISCARD ALL"),
+< CF_ABS("server_reset_query_always", CF_INT, cf_server_reset_query_always, 0, "0"),
+< CF_ABS("server_check_query", CF_STR, cf_server_check_query, 0, "select 1"),
+< CF_ABS("server_check_delay", CF_TIME_USEC, cf_server_check_delay, 0, "30"),
+< CF_ABS("server_fast_close", CF_INT, cf_server_fast_close, 0, "0"),
+< CF_ABS("query_timeout", CF_TIME_USEC, cf_query_timeout, 0, "0"),
+< CF_ABS("query_wait_timeout", CF_TIME_USEC, cf_query_wait_timeout, 0, "120"),
+262,269c231,240
+< CF_ABS("idle_transaction_timeout", CF_TIME_USEC, cf_idle_transaction_timeout, 0, "0"),
+< CF_ABS("server_lifetime", CF_TIME_USEC, cf_server_lifetime, 0, "3600"),
+< CF_ABS("server_idle_timeout", CF_TIME_USEC, cf_server_idle_timeout, 0, "600"),
+< CF_ABS("server_connect_timeout", CF_TIME_USEC, cf_server_connect_timeout, 0, "15"),
+< CF_ABS("server_login_retry", CF_TIME_USEC, cf_server_login_retry, 0, "15"),
+< CF_ABS("server_round_robin", CF_INT, cf_server_round_robin, 0, "0"),
+< CF_ABS("suspend_timeout", CF_TIME_USEC, cf_suspend_timeout, 0, "10"),
+< CF_ABS("ignore_startup_parameters", CF_STR, cf_ignore_startup_params, 0, ""),
+---
+> CF_ABS("client_tls_ca_file", CF_STR, cf_client_tls_ca_file, CF_NO_RELOAD, ""),
+> CF_ABS("client_tls_cert_file", CF_STR, cf_client_tls_cert_file, CF_NO_RELOAD, ""),
+> CF_ABS("client_tls_ciphers", CF_STR, cf_client_tls_ciphers, CF_NO_RELOAD, "fast"),
+> CF_ABS("client_tls_dheparams", CF_STR, cf_client_tls_dheparams, CF_NO_RELOAD, "auto"),
+> CF_ABS("client_tls_ecdhcurve", CF_STR, cf_client_tls_ecdhecurve, CF_NO_RELOAD, "auto"),
+> CF_ABS("client_tls_key_file", CF_STR, cf_client_tls_key_file, CF_NO_RELOAD, ""),
+> CF_ABS("client_tls_protocols", CF_STR, cf_client_tls_protocols, CF_NO_RELOAD, "secure"),
+> CF_ABS("client_tls_sslmode", CF_LOOKUP(sslmode_map), cf_client_tls_sslmode, CF_NO_RELOAD, "disable"),
+> CF_ABS("conffile", CF_STR, cf_config_file, 0, NULL),
+> CF_ABS("default_pool_size", CF_INT, cf_default_pool_size, 0, "20"),
+274,275c245,257
+< CF_ABS("resolv_conf", CF_STR, cf_resolv_conf, CF_NO_RELOAD, ""),
+< 
+---
+> CF_ABS("idle_transaction_timeout", CF_TIME_USEC, cf_idle_transaction_timeout, 0, "0"),
+> CF_ABS("ignore_startup_parameters", CF_STR, cf_ignore_startup_params, 0, ""),
+> CF_ABS("job_name", CF_STR, cf_jobname, CF_NO_RELOAD, "pgbouncer"),
+> CF_ABS("listen_addr", CF_STR, cf_listen_addr, CF_NO_RELOAD, ""),
+> CF_ABS("listen_backlog", CF_INT, cf_listen_backlog, CF_NO_RELOAD, "128"),
+> CF_ABS("listen_port", CF_INT, cf_listen_port, CF_NO_RELOAD, "6432"),
+> CF_ABS("log_connections", CF_INT, cf_log_connections, 0, "1"),
+> CF_ABS("log_disconnections", CF_INT, cf_log_disconnections, 0, "1"),
+> CF_ABS("log_pooler_errors", CF_INT, cf_log_pooler_errors, 0, "1"),
+> CF_ABS("log_stats", CF_INT, cf_log_stats, 0, "1"),
+> CF_ABS("logfile", CF_STR, cf_logfile, 0, ""),
+> CF_ABS("max_client_conn", CF_INT, cf_max_client_conn, 0, "100"),
+> CF_ABS("max_db_connections", CF_INT, cf_max_db_connections, 0, "0"),
+276a259,261
+> CF_ABS("max_user_connections", CF_INT, cf_max_user_connections, 0, "0"),
+> CF_ABS("min_pool_size", CF_INT, cf_min_pool_size, 0, "0"),
+> CF_ABS("pidfile", CF_STR, cf_pidfile, CF_NO_RELOAD, ""),
+277a263,268
+> CF_ABS("pool_mode", CF_LOOKUP(pool_mode_map), cf_pool_mode, 0, "session"),
+> CF_ABS("query_timeout", CF_TIME_USEC, cf_query_timeout, 0, "0"),
+> CF_ABS("query_wait_timeout", CF_TIME_USEC, cf_query_wait_timeout, 0, "120"),
+> CF_ABS("reserve_pool_size", CF_INT, cf_res_pool_size, 0, "0"),
+> CF_ABS("reserve_pool_timeout", CF_TIME_USEC, cf_res_pool_timeout, 0, "5"),
+> CF_ABS("resolv_conf", CF_STR, cf_resolv_conf, CF_NO_RELOAD, ""),
+278a270,295
+> CF_ABS("server_check_delay", CF_TIME_USEC, cf_server_check_delay, 0, "30"),
+> CF_ABS("server_check_query", CF_STR, cf_server_check_query, 0, "select 1"),
+> CF_ABS("server_connect_timeout", CF_TIME_USEC, cf_server_connect_timeout, 0, "15"),
+> CF_ABS("server_fast_close", CF_INT, cf_server_fast_close, 0, "0"),
+> CF_ABS("server_idle_timeout", CF_TIME_USEC, cf_server_idle_timeout, 0, "600"),
+> CF_ABS("server_lifetime", CF_TIME_USEC, cf_server_lifetime, 0, "3600"),
+> CF_ABS("server_login_retry", CF_TIME_USEC, cf_server_login_retry, 0, "15"),
+> CF_ABS("server_reset_query", CF_STR, cf_server_reset_query, 0, "DISCARD ALL"),
+> CF_ABS("server_reset_query_always", CF_INT, cf_server_reset_query_always, 0, "0"),
+> CF_ABS("server_round_robin", CF_INT, cf_server_round_robin, 0, "0"),
+> CF_ABS("server_tls_ca_file", CF_STR, cf_server_tls_ca_file, CF_NO_RELOAD, ""),
+> CF_ABS("server_tls_cert_file", CF_STR, cf_server_tls_cert_file, CF_NO_RELOAD, ""),
+> CF_ABS("server_tls_ciphers", CF_STR, cf_server_tls_ciphers, CF_NO_RELOAD, "fast"),
+> CF_ABS("server_tls_key_file", CF_STR, cf_server_tls_key_file, CF_NO_RELOAD, ""),
+> CF_ABS("server_tls_protocols", CF_STR, cf_server_tls_protocols, CF_NO_RELOAD, "secure"),
+> CF_ABS("server_tls_sslmode", CF_LOOKUP(sslmode_map), cf_server_tls_sslmode, CF_NO_RELOAD, "disable"),
+> #ifdef WIN32
+> CF_ABS("service_name", CF_STR, cf_jobname, CF_NO_RELOAD, NULL), /* alias for job_name */
+> #endif
+> CF_ABS("so_reuseport", CF_INT, cf_so_reuseport, CF_NO_RELOAD, "0"),
+> CF_ABS("stats_period", CF_INT, cf_stats_period, 0, "60"),
+> CF_ABS("stats_users", CF_STR, cf_stats_users, 0, ""),
+> CF_ABS("suspend_timeout", CF_TIME_USEC, cf_suspend_timeout, 0, "10"),
+> CF_ABS("syslog", CF_INT, cf_syslog, 0, "0"),
+> CF_ABS("syslog_facility", CF_STR, cf_syslog_facility, 0, "daemon"),
+> CF_ABS("syslog_ident", CF_STR, cf_syslog_ident, 0, "pgbouncer"),
+280d296
+< CF_ABS("tcp_socket_buffer", CF_INT, cf_tcp_socket_buffer, 0, "0"),
+284a301
+> CF_ABS("tcp_socket_buffer", CF_INT, cf_tcp_socket_buffer, 0, "0"),
+285a303,310
+> CF_ABS("unix_socket_dir", CF_STR, cf_unix_socket_dir, CF_NO_RELOAD, DEFAULT_UNIX_SOCKET_DIR),
+> #ifndef WIN32
+> CF_ABS("unix_socket_group", CF_STR, cf_unix_socket_group, CF_NO_RELOAD, ""),
+> CF_ABS("unix_socket_mode", CF_INT, cf_unix_socket_mode, CF_NO_RELOAD, "0777"),
+> #endif
+> #ifndef WIN32
+> CF_ABS("user", CF_STR, cf_username, CF_NO_RELOAD, NULL),
+> #endif
+287,312d311
+< CF_ABS("admin_users", CF_STR, cf_admin_users, 0, ""),
+< CF_ABS("stats_users", CF_STR, cf_stats_users, 0, ""),
+< CF_ABS("stats_period", CF_INT, cf_stats_period, 0, "60"),
+< CF_ABS("log_stats", CF_INT, cf_log_stats, 0, "1"),
+< CF_ABS("log_connections", CF_INT, cf_log_connections, 0, "1"),
+< CF_ABS("log_packets", CF_INT, cf_log_packets, 0, "0"),
+< CF_ABS("log_packets_file", CF_STR, cf_log_packets_file, 0, "/tmp/pktlog"),
+< CF_ABS("log_disconnections", CF_INT, cf_log_disconnections, 0, "1"),
+< CF_ABS("log_pooler_errors", CF_INT, cf_log_pooler_errors, 0, "1"),
+< CF_ABS("application_name_add_host", CF_INT, cf_application_name_add_host, 0, "0"),
+< 
+< CF_ABS("client_tls_sslmode", CF_LOOKUP(sslmode_map), cf_client_tls_sslmode, CF_NO_RELOAD, "disable"),
+< CF_ABS("client_tls_ca_file", CF_STR, cf_client_tls_ca_file, CF_NO_RELOAD, ""),
+< CF_ABS("client_tls_cert_file", CF_STR, cf_client_tls_cert_file, CF_NO_RELOAD, ""),
+< CF_ABS("client_tls_key_file", CF_STR, cf_client_tls_key_file, CF_NO_RELOAD, ""),
+< CF_ABS("client_tls_protocols", CF_STR, cf_client_tls_protocols, CF_NO_RELOAD, "secure"),
+< CF_ABS("client_tls_ciphers", CF_STR, cf_client_tls_ciphers, CF_NO_RELOAD, "fast"),
+< CF_ABS("client_tls_dheparams", CF_STR, cf_client_tls_dheparams, CF_NO_RELOAD, "auto"),
+< CF_ABS("client_tls_ecdhcurve", CF_STR, cf_client_tls_ecdhecurve, CF_NO_RELOAD, "auto"),
+< 
+< CF_ABS("server_tls_sslmode", CF_LOOKUP(sslmode_map), cf_server_tls_sslmode, CF_NO_RELOAD, "disable"),
+< CF_ABS("server_tls_ca_file", CF_STR, cf_server_tls_ca_file, CF_NO_RELOAD, ""),
+< CF_ABS("server_tls_cert_file", CF_STR, cf_server_tls_cert_file, CF_NO_RELOAD, ""),
+< CF_ABS("server_tls_key_file", CF_STR, cf_server_tls_key_file, CF_NO_RELOAD, ""),
+< CF_ABS("server_tls_protocols", CF_STR, cf_server_tls_protocols, CF_NO_RELOAD, "secure"),
+< CF_ABS("server_tls_ciphers", CF_STR, cf_server_tls_ciphers, CF_NO_RELOAD, "fast"),
+339c338
+< void config_for_each(void (*param_cb)(void *arg, const char *name, const char *val, bool reloadable),
+---
+> void config_for_each(void (*param_cb)(void *arg, const char *name, const char *val, const char *defval, bool reloadable),
+351c350
+< 		param_cb(arg, k->key_name, val, reloadable);
+---
+> 		param_cb(arg, k->key_name, val, k->def_value, reloadable);
+502d500
+< 	log_reload_to_buffer();
+881a880,882
+> #ifdef USE_SYSTEMD
+> 			printf("systemd: yes\n");
+> #endif
+950a952,956
+> #ifndef USE_SYSTEMD
+> 	if (getenv("NOTIFY_SOCKET"))
+> 		log_warning("apparently running under systemd with notify socket, but systemd support was not built");
+> #endif
+> 
+962d967
+< 	log_setup();
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/objects.c /Users/felipeandrade/pgbouncer/src/objects.c
+67,71d66
+< /*
+<  * Count clients that are coming in to give them "unique" ids.
+<  */
+< static uint32_t client_ids = 0;
+< 
+92,94d86
+< 
+< 	/* Will collide after 4.2 billion connections, so reasonably low chance. */
+< 	client->client_id = client_ids++;
+105d96
+< 	server->client_id = 0;
+242c233
+< 		fatal("change_server_state: bad old server state: %d", server->state);
+---
+> 		fatal("bad old server state: %d", server->state);
+279c270
+< 		fatal("bad server state");
+---
+> 		fatal("bad server state: %d", server->state);
+607a599,602
+> 	/* Could be mock authentication, proceed normally */
+> 	if (!pool)
+> 		return true;
+> 
+790c785
+< 		fatal("bad server state in release_server (%d)", server->state);
+---
+> 		fatal("bad server state: %d", server->state);
+875c870
+< 		fatal("disconnect_server: bad server state (%d)", server->state);
+---
+> 		fatal("bad server state: %d", server->state);
+903a899,901
+> 	usec_t now = get_cached_time();
+> 
+> 	if (reason) {
+906d903
+< 	usec_t now = get_cached_time();
+911a909
+> 	}
+913c911
+< 	if (cf_log_disconnections)
+---
+> 	if (cf_log_disconnections && reason)
+937c935
+< 		fatal("bad client state in disconnect_client: %d", client->state);
+---
+> 		fatal("bad client state: %d", client->state);
+949a948,951
+> 	if (client->login_user && client->login_user->mock_auth) {
+> 		free(client->login_user);
+> 		client->login_user = NULL;
+> 	}
+954,955d955
+< 	if (cf_log_packets)
+< 		log_connect_to_buffer(false, client);
+1220c1220
+< 	server->auth_user = server->pool->user;
+---
+> 	server->login_user = server->pool->user;
+1246d1245
+< 	client->last_pkt = 0;
+1274c1273
+< 		fatal("bad client state");
+---
+> 		fatal("bad client state: %d", client->state);
+1294,1296d1292
+< 	if (cf_log_packets)
+< 		log_connect_to_buffer(true, client);
+< 
+1506c1502
+< 	server->auth_user = user;
+---
+> 	server->login_user = user;
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/pam.c /Users/felipeandrade/pgbouncer/src/pam.c
+64c64
+< 	/* The username (same as in client->auth_user->name).
+---
+> 	/* The username (same as in client->login_user->name).
+174c174
+< 	safe_strcpy(request->username, client->auth_user->name, MAX_USERNAME);
+---
+> 	safe_strcpy(request->username, client->login_user->name, MAX_USERNAME);
+284c284
+< 		safe_strcpy(client->auth_user->passwd, request->password, sizeof(client->auth_user->passwd));
+---
+> 		safe_strcpy(client->login_user->passwd, request->password, sizeof(client->login_user->passwd));
+287c287
+< 		disconnect_client(client, true, "auth failed");
+---
+> 		disconnect_client(client, true, "PAM authentication failed");
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/pktbuf.c /Users/felipeandrade/pgbouncer/src/pktbuf.c
+109c109
+< 	int res;
+---
+> 	ssize_t res;
+448c448
+< 					fatal("byte array too long (%" PRIuZ " > %" PRIuZ ")", required, sizeof(tmp));
+---
+> 					fatal("byte array too long (%zu > %zu)", required, sizeof(tmp));
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/pooler.c /Users/felipeandrade/pgbouncer/src/pooler.c
+130c130
+< #if defined(SO_REUSEPORT)
+---
+> #if defined(SO_REUSEPORT_LB)
+132,133c132,133
+< 		errpos = "setsockopt/SO_REUSEPORT";
+< 		res = setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &val, sizeof(val));
+---
+> 		errpos = "setsockopt/SO_REUSEPORT_LB";
+> 		res = setsockopt(sock, SOL_SOCKET, SO_REUSEPORT_LB, &val, sizeof(val));
+136c136
+< #elif defined(SO_REUSEPORT_LB)
+---
+> #elif defined(SO_REUSEPORT)
+138,139c138,139
+< 		errpos = "setsockopt/SO_REUSEPORT_LB";
+< 		res = setsockopt(sock, SOL_SOCKET, SO_REUSEPORT_LB, &val, sizeof(val));
+---
+> 		errpos = "setsockopt/SO_REUSEPORT";
+> 		res = setsockopt(sock, SOL_SOCKET, SO_REUSEPORT, &val, sizeof(val));
+472d471
+< 	char **names = NULL;
+474c473
+< 	n = sd_listen_fds_with_names(0, &names);
+---
+> 	n = sd_listen_fds(0);
+507,508c506,507
+< 				die("failed to set up socket passed from service manager (%s, fd %d)", names[i], fd);
+< 			log_info("socket passed from service manager (%s, fd %d)", names[i], fd);
+---
+> 				die("failed to set up socket passed from service manager (fd %d)", fd);
+> 			log_info("socket passed from service manager (fd %d)", fd);
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/sbuf.c /Users/felipeandrade/pgbouncer/src/sbuf.c
+77c77
+< static bool sbuf_actual_recv(SBuf *sbuf, unsigned len)  _MUSTCHECK;
+---
+> static bool sbuf_actual_recv(SBuf *sbuf, size_t len)  _MUSTCHECK;
+82,83c82,83
+< static int raw_sbufio_recv(struct SBuf *sbuf, void *dst, unsigned int len);
+< static int raw_sbufio_send(struct SBuf *sbuf, const void *data, unsigned int len);
+---
+> static ssize_t raw_sbufio_recv(struct SBuf *sbuf, void *dst, size_t len);
+> static ssize_t raw_sbufio_send(struct SBuf *sbuf, const void *data, size_t len);
+93,94c93,94
+< static int tls_sbufio_recv(struct SBuf *sbuf, void *dst, unsigned int len);
+< static int tls_sbufio_send(struct SBuf *sbuf, const void *data, unsigned int len);
+---
+> static ssize_t tls_sbufio_recv(struct SBuf *sbuf, void *dst, size_t len);
+> static ssize_t tls_sbufio_send(struct SBuf *sbuf, const void *data, size_t len);
+146c146
+< bool sbuf_connect(SBuf *sbuf, const struct sockaddr *sa, int sa_len, int timeout_sec)
+---
+> bool sbuf_connect(SBuf *sbuf, const struct sockaddr *sa, socklen_t sa_len, time_t timeout_sec)
+508c508,509
+< 	int res, avail;
+---
+> 	int avail;
+> 	ssize_t res;
+640c641
+< static bool sbuf_actual_recv(SBuf *sbuf, unsigned len)
+---
+> static bool sbuf_actual_recv(SBuf *sbuf, size_t len)
+642c643
+< 	int got;
+---
+> 	ssize_t got;
+821c822
+< bool sbuf_answer(SBuf *sbuf, const void *buf, unsigned len)
+---
+> bool sbuf_answer(SBuf *sbuf, const void *buf, size_t len)
+823c824
+< 	int res;
+---
+> 	ssize_t res;
+830c831
+< 		log_debug("sbuf_answer: partial send: len=%d sent=%d", len, res);
+---
+> 		log_debug("sbuf_answer: partial send: len=%zu sent=%zd", len, res);
+839c840
+< static int raw_sbufio_recv(struct SBuf *sbuf, void *dst, unsigned int len)
+---
+> static ssize_t raw_sbufio_recv(struct SBuf *sbuf, void *dst, size_t len)
+844c845
+< static int raw_sbufio_send(struct SBuf *sbuf, const void *data, unsigned int len)
+---
+> static ssize_t raw_sbufio_send(struct SBuf *sbuf, const void *data, size_t len)
+1091c1092
+< static int tls_sbufio_recv(struct SBuf *sbuf, void *dst, unsigned int len)
+---
+> static ssize_t tls_sbufio_recv(struct SBuf *sbuf, void *dst, size_t len)
+1101c1102
+< 	log_noise("tls_read: req=%u out=%d", len, (int)out);
+---
+> 	log_noise("tls_read: req=%zu out=%zd", len, out);
+1116c1117
+< static int tls_sbufio_send(struct SBuf *sbuf, const void *data, unsigned int len)
+---
+> static ssize_t tls_sbufio_send(struct SBuf *sbuf, const void *data, size_t len)
+1126c1127
+< 	log_noise("tls_write: req=%u out=%d", len, (int)out);
+---
+> 	log_noise("tls_write: req=%zu out=%zd", len, out);
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/scram.c /Users/felipeandrade/pgbouncer/src/scram.c
+789c789,841
+< char *build_server_first_message(ScramState *scram_state, const char *stored_secret)
+---
+> /*
+>  * Deterministically generate salt for mock authentication, using a
+>  * SHA256 hash based on the username and an instance-level secret key.
+>  * Target buffer needs to be of size SCRAM_DEFAULT_SALT_LEN.
+>  */
+> static void scram_mock_salt(const char *username, uint8_t *saltbuf)
+> {
+> 	static uint8_t mock_auth_nonce[32];
+> 	static bool mock_auth_nonce_initialized = false;
+> 	struct sha256_ctx ctx;
+> 	uint8_t sha_digest[PG_SHA256_DIGEST_LENGTH];
+> 
+> 	/*
+> 	 * Generating salt using a SHA256 hash works as long as the
+> 	 * required salt length is not larger than the SHA256 digest
+> 	 * length.
+> 	 */
+> 	static_assert(PG_SHA256_DIGEST_LENGTH >= SCRAM_DEFAULT_SALT_LEN,
+> 		      "salt length greater than SHA256 digest length");
+> 
+> 	if (!mock_auth_nonce_initialized) {
+> 		get_random_bytes(mock_auth_nonce, sizeof(mock_auth_nonce));
+> 		mock_auth_nonce_initialized = true;
+> 	}
+> 
+> 	sha256_reset(&ctx);
+> 	sha256_update(&ctx, (uint8_t *) username, strlen(username));
+> 	sha256_update(&ctx, mock_auth_nonce, sizeof(mock_auth_nonce));
+> 	sha256_final(&ctx, sha_digest);
+> 
+> 	memcpy(saltbuf, sha_digest, SCRAM_DEFAULT_SALT_LEN);
+> }
+> 
+> static bool build_mock_scram_secret(const char *username, ScramState *scram_state)
+> {
+> 	uint8_t saltbuf[SCRAM_DEFAULT_SALT_LEN];
+> 	int encoded_len;
+> 
+> 	scram_state->iterations = SCRAM_DEFAULT_ITERATIONS;
+> 
+> 	scram_mock_salt(username, saltbuf);
+> 	scram_state->salt = malloc(pg_b64_enc_len(sizeof(saltbuf)) + 1);
+> 	if (!scram_state->salt)
+> 		goto failed;
+> 	encoded_len = pg_b64_encode((char *) saltbuf, sizeof(saltbuf), scram_state->salt);
+> 	scram_state->salt[encoded_len] = '\0';
+> 
+> 	return true;
+> failed:
+> 	return false;
+> }
+> 
+> char *build_server_first_message(ScramState *scram_state, const char *username, const char *stored_secret)
+795a848,851
+> 	if (!stored_secret) {
+> 		if (!build_mock_scram_secret(username, scram_state))
+> 			goto failed;
+> 	} else {
+812a869
+> 	}
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/server.c /Users/felipeandrade/pgbouncer/src/server.c
+352c352
+< 			return handle_auth_response(client, pkt);
+---
+> 			return handle_auth_query_response(client, pkt);
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/takeover.c /Users/felipeandrade/pgbouncer/src/takeover.c
+42c42
+< 	int got;
+---
+> 	ssize_t got;
+311c311
+< 	int res;
+---
+> 	ssize_t res;
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/src/util.c /Users/felipeandrade/pgbouncer/src/util.c
+44c44
+< 	user = sock->auth_user ? sock->auth_user->name : "(nouser)";
+---
+> 	user = sock->login_user ? sock->login_user->name : "(nouser)";
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/test/asynctest.c /Users/felipeandrade/pgbouncer/test/asynctest.c
+106a107
+> _PRINTF(3, 4)
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/test/ssl/test.sh /Users/felipeandrade/pgbouncer/test/ssl/test.sh
+153a154,161
+> 
+> 	# Detect fatal errors from PgBouncer (which are internal
+> 	# errors), but not those from PostgreSQL (which could be
+> 	# normal, such as authentication failures)
+> 	if grep 'FATAL @' $BOUNCER_LOG >> $LOGDIR/$1.out; then
+> 		status=1
+> 	fi
+> 
+diff -r -w -x '.*' -x etc -x doc /Users/felipeandrade/pgbouncer-instacart/test/test.sh /Users/felipeandrade/pgbouncer/test/test.sh
+9c9
+< export PGHOST=localhost
+---
+> export PGHOST=127.0.0.1
+19a20,21
+> BOUNCER_ADMIN_HOST=/tmp
+> 
+34a37,53
+> # The tests require that psql can connect to the PgBouncer admin
+> # console.  On platforms that have getpeereid(), this works by
+> # connecting as user pgbouncer over the Unix socket.  On other
+> # platforms, we have to rely on "trust" authentication, but then we
+> # have to skip any tests that use authentication methods other than
+> # "trust".
+> case `uname` in
+> 	MINGW*)
+> 		have_getpeereid=false
+> 		use_unix_sockets=false
+> 		;;
+> 	*)
+> 		have_getpeereid=true
+> 		use_unix_sockets=true
+> 		;;
+> esac
+> 
+42a62,69
+> case `uname` in
+> MINGW*)
+> 	createdb() { createdb.exe "$@"; }
+> 	initdb() { initdb.exe "$@"; }
+> 	psql() { psql.exe "$@"; }
+> 	;;
+> esac
+> 
+49a77,84
+> if ! $use_unix_sockets; then
+> 	BOUNCER_ADMIN_HOST=127.0.0.1
+> 
+> 	cp test.ini test.ini.bak
+> 	sed -i 's/^unix_socket_dir =/#&/' test.ini
+> 	echo 'admin_users = pgbouncer' >> test.ini
+> fi
+> 
+115a151,153
+> 	if ! $use_unix_sockets; then
+> 		sed -i 's/^local/#local/' pgdata/pg_hba.conf
+> 	fi
+219a258
+> 	test -e test.ini.bak && mv test.ini.bak test.ini
+230c269
+< 	psql -X -h /tmp -U pgbouncer -d pgbouncer -c "$@;" || die "Cannot contact bouncer!"
+---
+> 	psql -X -h $BOUNCER_ADMIN_HOST -U pgbouncer -d pgbouncer -c "$@;" || die "Cannot contact bouncer!"
+235a275,279
+> 	case `uname` in
+> 	MINGW*)
+> 		(nohup $BOUNCER_EXE $BOUNCER_INI </dev/null >/dev/null 2>&1 &)
+> 		;;
+> 	*)
+237c281,283
+< 	until psql -X -h /tmp -U pgbouncer -d pgbouncer -c "show version" 2>/dev/null 1>&2; do sleep 0.1; done
+---
+> 		;;
+> 	esac
+> 	until psql -X -h $BOUNCER_ADMIN_HOST -U pgbouncer -d pgbouncer -c "show version" 2>/dev/null 1>&2; do sleep 0.1; done
+241a288,295
+> 
+> 	# Detect fatal errors from PgBouncer (which are internal
+> 	# errors), but not those from PostgreSQL (which could be
+> 	# normal, such as authentication failures)
+> 	if grep 'FATAL @' $BOUNCER_LOG >> $LOGDIR/$1.out; then
+> 		status=1
+> 	fi
+> 
+255a310,315
+> 	case `uname` in
+> 	MINGW*)
+> 		psql -X -h $BOUNCER_ADMIN_HOST -U pgbouncer -d pgbouncer -c "shutdown;" 2>/dev/null
+> 		sleep 1
+> 		;;
+> 	*)
+256a317,318
+> 		;;
+> 	esac
+265c327
+< 	v2=$(psql -X -tAq -h /tmp -U pgbouncer -d pgbouncer -c "show version;") || return 1
+---
+> 	v2=$(psql -X -tAq -h $BOUNCER_ADMIN_HOST -U pgbouncer -d pgbouncer -c "show version;") || return 1
+282c344
+< 		    psql -X -h /tmp -U pgbouncer -d pgbouncer -c "show $what;" || return 1
+---
+> 		    psql -X -h $BOUNCER_ADMIN_HOST -U pgbouncer -d pgbouncer -c "show $what;" || return 1
+285c347
+< 	psql -X -h /tmp -U pgbouncer -d pgbouncer -c "show bogus;" && return 1
+---
+> 	psql -X -h $BOUNCER_ADMIN_HOST -U pgbouncer -d pgbouncer -c "show bogus;" && return 1
+397c459
+< 	kill -HUP `head -n1 pgdata/postmaster.pid`
+---
+> 	pgctl reload
+408c470
+< 	kill -HUP `head -n1 pgdata/postmaster.pid`
+---
+> 	pgctl reload
+475a538,541
+> 	# make existing connections go away
+> 	psql -X -p $PG_PORT -d postgres -c "select pg_terminate_backend(pid) from pg_stat_activity where usename='bouncer'"
+> 	until test $(psql -X -p $PG_PORT -d postgres -tAq -c "select count(1) from pg_stat_activity where usename='bouncer'") -eq 0; do sleep 0.1; done
+> 
+533a600,601
+> 	$have_getpeereid || return 77
+> 
+578c646
+< 		psql -X -h /tmp -p $BOUNCER_PORT -d pgbouncer -U pgbouncer <<-PSQL_EOF
+---
+> 		psql -X -h $BOUNCER_ADMIN_HOST -p $BOUNCER_PORT -d pgbouncer -U pgbouncer <<-PSQL_EOF
+645c713
+< 	kill -HUP `cat $BOUNCER_PID`
+---
+> 	admin "reload"
+694a763,764
+> 	case `uname` in MINGW*) return 77;; esac # TODO
+> 
+722a793,794
+> 	$have_getpeereid || return 77
+> 
+764a837,838
+> 	$have_getpeereid || return 77
+> 
+811a886,887
+> 	$have_getpeereid || return 77
+> 
+853a930
+> 	$have_getpeereid || return 77
+893a971
+> 	$have_getpeereid || return 77
+911a990
+> 	$have_getpeereid || return 77
+933a1013,1121
+> # Several tests that check the behavior when connecting with a
+> # nonexistent user under various authentication types.  Database p1
+> # has a forced user, p2 does not; these exercise slightly different
+> # code paths.
+> 
+> test_no_user_trust() {
+> 	admin "set auth_type='trust'"
+> 
+> 	psql -X -U nosuchuser1 -c "select 1" p2 && return 1
+> 	grep -F "closing because: \"trust\" authentication failed" $BOUNCER_LOG || return 1
+> 
+> 	return 0
+> }
+> 
+> test_no_user_trust_forced_user() {
+> 	admin "set auth_type='trust'"
+> 
+> 	psql -X -U nosuchuser1 -c "select 1" p1 && return 1
+> 	grep -F "closing because: \"trust\" authentication failed" $BOUNCER_LOG || return 1
+> 
+> 	return 0
+> }
+> 
+> test_no_user_password() {
+> 	$have_getpeereid || return 77
+> 
+> 	admin "set auth_type='plain'"
+> 
+> 	PGPASSWORD=whatever psql -X -U nosuchuser1 -c "select 1" p2 && return 1
+> 	grep -F "no such user: nosuchuser1" $BOUNCER_LOG || return 1
+> 	grep -F "closing because: password authentication failed" $BOUNCER_LOG || return 1
+> 
+> 	return 0
+> }
+> 
+> test_no_user_password_forced_user() {
+> 	$have_getpeereid || return 77
+> 
+> 	admin "set auth_type='plain'"
+> 
+> 	PGPASSWORD=whatever psql -X -U nosuchuser1 -c "select 1" p1 && return 1
+> 	grep -F "no such user: nosuchuser1" $BOUNCER_LOG || return 1
+> 	grep -F "closing because: password authentication failed" $BOUNCER_LOG || return 1
+> 
+> 	return 0
+> }
+> 
+> test_no_user_md5() {
+> 	$have_getpeereid || return 77
+> 
+> 	admin "set auth_type='md5'"
+> 
+> 	PGPASSWORD=whatever psql -X -U nosuchuser1 -c "select 1" p2 && return 1
+> 	grep -F "no such user: nosuchuser1" $BOUNCER_LOG || return 1
+> 	grep -F "closing because: password authentication failed" $BOUNCER_LOG || return 1
+> 
+> 	return 0
+> }
+> 
+> test_no_user_md5_forced_user() {
+> 	$have_getpeereid || return 77
+> 
+> 	admin "set auth_type='md5'"
+> 
+> 	PGPASSWORD=whatever psql -X -U nosuchuser1 -c "select 1" p1 && return 1
+> 	grep -F "no such user: nosuchuser1" $BOUNCER_LOG || return 1
+> 	grep -F "closing because: password authentication failed" $BOUNCER_LOG || return 1
+> 
+> 	return 0
+> }
+> 
+> test_no_user_scram() {
+> 	$have_getpeereid || return 77
+> 
+> 	admin "set auth_type='scram-sha-256'"
+> 
+> 	PGPASSWORD=whatever psql -X -U nosuchuser1 -c "select 1" p2 && return 1
+> 	grep -F "no such user: nosuchuser1" $BOUNCER_LOG || return 1
+> 	grep -F "closing because: SASL authentication failed" $BOUNCER_LOG || return 1
+> 
+> 	return 0
+> }
+> 
+> test_no_user_scram_forced_user() {
+> 	$have_getpeereid || return 77
+> 
+> 	admin "set auth_type='scram-sha-256'"
+> 
+> 	PGPASSWORD=whatever psql -X -U nosuchuser1 -c "select 1" p1 && return 1
+> 	grep -F "no such user: nosuchuser1" $BOUNCER_LOG || return 1
+> 	grep -F "closing because: SASL authentication failed" $BOUNCER_LOG || return 1
+> 
+> 	return 0
+> }
+> 
+> test_no_user_auth_user() {
+> 	$have_getpeereid || return 77
+> 
+> 	admin "set auth_type='md5'"
+> 
+> 	PGPASSWORD=whatever psql -X -U nosuchuser1 -c "select 1" authdb && return 1
+> 	# Currently no mock authentication when using
+> 	# auth_query/auth_user.  See TODO in
+> 	# handle_auth_query_response().
+> 	grep -F "closing because: no such user (age" $BOUNCER_LOG || return 1
+> 
+> 	return 0
+> }
+> 
+968a1157,1165
+> test_no_user_trust
+> test_no_user_trust_forced_user
+> test_no_user_password
+> test_no_user_password_forced_user
+> test_no_user_md5
+> test_no_user_md5_forced_user
+> test_no_user_scram
+> test_no_user_scram_forced_user
+> test_no_user_auth_user

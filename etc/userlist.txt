@@ -1,3 +1,1 @@
-"marko" "asdasd"
-"postgres" "asdasd"
-"pgbouncer" "fake"
+"user" "pass"

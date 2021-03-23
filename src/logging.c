@@ -20,28 +20,65 @@
 
 #include "bouncer.h"
 
-#include <sys/file.h>
 #include <errno.h>
+#include <sys/file.h>
+#include <time.h>
 
 #define LOG_BUFFER_SIZE 1024 * 1024 * 2 /* 2 MB */
-#define MAX_LOG_FILE_SIZE 1024 * 1024 * 25 /* 25 MB; if we get this far, the replayer isn't doing its job */
+
+/* File id to prevent accidental collision, appended to file name such as 'pktlog.001' */
+/*
+ * Each file contains a chunk of the memory buffer, in an indexed manner
+ * This allows to the pgbouncer to always be able to write to a new file (in flight write),
+ * whereas the replayer is still consuming the previously files.
+ *
+ * The replayer knows the file is ready by it's name - pgbouncer atomicly rename the file
+ * after flushing.
+ *
+ * To tweak the ingestion we can adjust the chunk size, the time between flushes
+ * and the number os files.
+ *
+ *  - chunk size:
+ *     - lower bound concerns: this also controls the biggest query
+ *       we could log, so it's wise to big at least 2mb
+ *     - upper bound: this is the biggest amount of space in tmpfs, which is in the ram
+ *       2mb * 1024 files equals to 2gb
+ *
+ * - time between flushes: lower intervals have lower latency for replay,
+ *       but also use more cpu time - the amount of bytes written per second
+ *       should not be affected by the flush interval,
+ *       unless the cpu becomes the bottleneck ~ flushing every 1ms
+ *
+ * - number of files: the biggest, the more tolerant pgbouncer is with
+ *       the replayer lagging behind, the total time is calculated by
+ *       number of files * time between flushes
+ *
+ *       i.e.
+ *            256 * 100ms = 25.6 seconds [space: 2mb * 256 = 512mb]
+ *            256 * 50ms = 12.8 seconds
+ *            1024 * 25ms = 25.6 seconds
+ *            4096 * 25ms = 102.4 seconds [space: 2mb * 4096 = 8gb]
+ *            24 * 50ms = 1.2 seconds [space: 2mb * 24 = 48mb]
+ */
+#define FILE_ID_MAX 24
+static uint16_t file_id = 0;
 
 static const char *reload_command = "RELOAD";
 static const char connect_char = '!';
 
-/* Flush packets to log every 0.1 of a second */
-static struct timeval buffer_drain_period = {0, USEC / 10};
+/* Flush packets 4 times per second - every 250ms */
+static struct timeval buffer_drain_period = {0, USEC / 4};
 static struct event buffer_drain_ev;
 
 /* The buffer */
 static char *buf = NULL;
 static size_t len = 0;
-static size_t flushed = 0;
 
 static void log_flush_buffer(void);
 static void log_shutdown(void);
 static void log_init(void);
 void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg);
+static bool log_ensure_buffer_space(uint32_t n);
 
 /*
  * Flush the buffer every .1 of a second
@@ -104,7 +141,7 @@ void log_reload_to_buffer(void) {
   uint32_t pkt_len = htonl(reload_len + sizeof(uint32_t));
 
   /* Reload again if you don't see changes because of this */
-  if (len + reload_len + sizeof(uint32_t) >= LOG_BUFFER_SIZE) {
+  if (!log_ensure_buffer_space(reload_len + sizeof(uint32_t))) {
     log_info("Can't issue RELOAD command to replayer, buffer full");
     return;
   }
@@ -138,37 +175,34 @@ void log_connect_to_buffer(bool connected, PgSocket *client) {
            pkt_len = sizeof(uint8_t) + sizeof(uint32_t),
            net_pkt_len = htonl(pkt_len);
 
+  log_debug("log_connect_to_buffer");
+
   if (cf_shutdown)
     return;
 
-  if (len + sizeof(net_client_id) + sizeof(net_query_interval) + sizeof(char) + pkt_len >= LOG_BUFFER_SIZE) {
+  log_debug("log_pkt_to_buffer: log_ensure_buffer_space");
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + sizeof(char) + pkt_len + sizeof(uint8_t)))
     return;
-  }
-
-  if (client->last_pkt > 0 && !connected) {
-    usec_t query_interval_usec = get_cached_time() - client->last_pkt;
-
-    if (query_interval_usec > UINT32_MAX) {
-      query_interval = UINT32_MAX; /* up to about an hour between queries */
-    } else {
-      query_interval = (uint32_t)query_interval_usec;
-    }
-  }
 
   net_query_interval = htonl(query_interval);
 
+  log_debug("log_pkt_to_buffer: client_id");
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);
 
+  log_debug("log_pkt_to_buffer: query_interval");
   memcpy(buf + len, &net_query_interval, sizeof(net_query_interval));
   len += sizeof(net_query_interval);
 
+  log_debug("log_pkt_to_buffer: connect_char");
   memcpy(buf + len, &connect_char, sizeof(char));
   len += sizeof(char);
 
+  log_debug("log_pkt_to_buffer: pkt_len");
   memcpy(buf + len, &net_pkt_len, sizeof(net_pkt_len));
   len += sizeof(net_pkt_len);
 
+  log_debug("log_pkt_to_buffer: connected");
   memcpy(buf + len, &connected, sizeof(uint8_t));
   len += sizeof(uint8_t);
 }
@@ -180,33 +214,15 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   uint32_t net_client_id = htonl(client->client_id),
            query_interval = 0, net_query_interval;
 
+  log_debug("log_pkt_to_buffer");
+
   /* If the bouncer is shutting down, the buffer is gone. */
   if (cf_shutdown)
     return;
 
-  /* record intervals between packets */
-  if (client->last_pkt > 0) {
-    usec_t query_interval_usec = get_cached_time() - client->last_pkt;
-
-    if (query_interval_usec > UINT32_MAX) {
-      query_interval = UINT32_MAX; /* up to about an hour between queries */
-    } else {
-      query_interval = (uint32_t)query_interval_usec;
-    }
-  }
-
-  client->last_pkt = get_cached_time();
-
-  net_query_interval = htonl(query_interval);
-  /* Buffer full, drop the packet logging on the floor.
-   * No logging since this function is called for each incoming packet.
-   *
-   * pkt->len = packet size
-   * + 16 bytes of metadata
-   */
-  if (len + sizeof(net_client_id) + sizeof(net_query_interval) + pkt->len >= LOG_BUFFER_SIZE) {
+  log_debug("log_pkt_to_buffer: checking for incomplete_pkt");
+  if (incomplete_pkt(pkt))
     return;
-  }
 
   /* Log only supported packets.
    * P - prepared statement
@@ -224,6 +240,34 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
       return;
   }
 
+  /* Buffer full, drop the packet logging on the floor.
+   * No logging since this function is called for each incoming packet.
+   *
+   * pkt->len = packet size
+   * + 16 bytes of metadata
+   */
+  log_debug("log_pkt_to_buffer: log_ensure_buffer_space");
+
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + pkt->len))
+    return;
+
+  /* record intervals between packets */
+  log_debug("log_pkt_to_buffer: calc interval");
+
+  if (client->last_pkt > 0) {
+    usec_t query_interval_usec = get_cached_time() - client->last_pkt;
+
+    if (query_interval_usec > UINT32_MAX) {
+      query_interval = UINT32_MAX; /* up to about an hour between queries */
+    } else {
+      query_interval = (uint32_t)query_interval_usec;
+    }
+  }
+
+  client->last_pkt = get_cached_time();
+
+  net_query_interval = htonl(query_interval);
+
   /*
    * Write the packet to the log file.
    *
@@ -235,58 +279,100 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
    *             first byte of the packet is the type
    *             next 4 bytes of the packet are the length
    */
+  log_debug("log_pkt_to_buffer: writing net_client_id");
+
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);
 
+  log_debug("log_pkt_to_buffer: writing net_query_interval");
   memcpy(buf + len, &net_query_interval, sizeof(net_query_interval));
   len += sizeof(net_query_interval);
 
+  log_debug("log_pkt_to_buffer: writing pkt data");
   memcpy(buf + len, pkt->data.data, pkt->len);
   len += pkt->len;
 }
 
 /*
+ * Check if we have space in the buffer to append n bytes - if we don't, disable logging
+ */
+static bool log_ensure_buffer_space(uint32_t n) {
+  if (len + n > LOG_BUFFER_SIZE) {
+    log_info("Warning - Buffer full - current buffer size: %zu, bytes required: %u", len, n);
+    /*
+    don't disable logging
+
+    cf_log_packets = 0;
+    log_shutdown();
+    */
+    return false;
+  }
+  return true;
+}
+
+
+/*
+ * Check if the files we are going to touch dont exist - if they do, disable logging
+ */
+static bool log_ensure_file_dont_exist(char *file) {
+  struct stat info;
+  if (stat(file, &info) != -1) {
+    char time[50];
+    strftime(time, 50, "%Y-%m-%d %H:%M:%S", localtime(&info.st_mtime));
+    log_info("Warning - Packet log file exists: %s, size: %lld bytes, modified_at: %s", file, info.st_size, time);
+
+    // don't disable logging
+    
+    // cf_log_packets = 0;
+    // log_shutdown();
+
+    return false;
+  }
+  return true;
+}
+
+
+
+/*
  * Flush the packets to disk.
+ *
+ * Since the log files will be read by a different process, it uses the file name to communicate state.
+ *
+ * This process always write to the next available file_id, and rotate to 0 when it reaches the max value.
+ *
+ * During the write, a file named 'pktlog.000.w' will be filled with the buffer, after done flushing,
+ * the file get renamed to 'pktlog.000' indicating it's ready to be consumed.
+ * 
+ * After consumption, the process consuming the log files needs to remove them
+ * from the directory to allow the name reuse after rotation.
  */
 static void log_flush_buffer(void) {
-  int tmp_fd, fd;
-  struct stat info;
-  char tmp_fname[strlen(cf_log_packets_file)+6];
+  int fd;
 
   /* Don't waste time on an empty buffer - no traffic on the bouncer */
   if (len < 1)
     return;
 
-  if (stat(cf_log_packets_file, &info) != -1) {
-    if (info.st_size > MAX_LOG_FILE_SIZE) {
-      log_info("Dropping packet logging: packet log file %s is %lld bytes which is too large", cf_log_packets_file, info.st_size);
-      return;
-    }
-  }
+  /* In-flight write file */
+  char next_fname[strlen(cf_log_packets_file)+9];   /* .001.w */
+  snprintf(next_fname, strlen(cf_log_packets_file)+9, "%s.%05d.w", cf_log_packets_file, file_id);
 
-  /* No log file, the replayer has rotated it. */
-  else {
-    /* log_info("Could not stat log file %s: %s", cf_log_packets_file, strerror(errno)); */
-    info.st_size = 0;
-  }
+  /* Available file */
+  char next_fname_available[strlen(cf_log_packets_file) + 7];   /* .001 */
+  snprintf(next_fname_available, strlen(cf_log_packets_file)+7, "%s.%05d", cf_log_packets_file, file_id);
 
+  /* Check both files */
   /*
-   * Get a shared lock on a .lock file.
-   * The replayer takes an exclusive lock on this file and prevents
-   * us from opening up the file descriptor for the time it takes it to rename
-   * the file. This forces us to write to a new log file.
-   */
-  snprintf(tmp_fname, strlen(cf_log_packets_file) + 6, "%s.lock", cf_log_packets_file);
-  tmp_fd = open(tmp_fname, O_CREAT, S_IWUSR | S_IRUSR);
-  if (flock(tmp_fd, LOCK_SH | LOCK_NB) == -1) {
-    log_info("Could not acquire lock file for packet logging: %s", strerror(errno));
-
-    /* Try again in .1 of a second */
+  This is commented to allow pgbouncer to overwrite existing files
+  It means we may lose packets, but we guarantee the buffer is being flushed (other wise it will be kept full and stop logging anyways)
+  */
+  if (!log_ensure_file_dont_exist(next_fname))
     return;
-  }
 
-  /* Open the log file in append mode */
-  fd = open(cf_log_packets_file, O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
+  if (!log_ensure_file_dont_exist(next_fname_available))
+    return; 
+
+  fd = open(next_fname, O_EXCL | O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
   if (fd == -1) {
     log_info("Could not open packet log file: %s", strerror(errno));
     return;
@@ -295,23 +381,25 @@ static void log_flush_buffer(void) {
   /* Flush the packets to the log file */
   write(fd, buf, len);
 
-  /* Close the log file and release the lock file */
+  /* Close the log file */
   fsync(fd);
   close(fd);
-  flock(tmp_fd, LOCK_UN);
-  close(tmp_fd);
 
-  flushed += len;
-
-  /* Log every 1mb of packets flushed */
-  if (flushed > 1e6) {
-    log_info("Flushed %.2f kb to packet log file. Log file size: %.2f kb", flushed / 1024.0, (info.st_size + len) / 1024.0);
-    flushed = 0;
-  }
+  // log_debug("Flushed %lu bytes to packet log file: %s", len, next_fname);
 
   /* Clear the buffer since it's an append buffer */
   memset(buf, 0, len);
   len = 0;
+
+  if (rename(next_fname, next_fname_available) != 0) {
+      log_info("Error: unable to rename file '%s' to '%s'", next_fname, next_fname_available);
+   }
+
+  /* Increment file id */
+  if (file_id == FILE_ID_MAX)
+    file_id = 0;
+  else
+    file_id++;
 }
 
 /*

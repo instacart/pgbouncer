@@ -341,7 +341,6 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 	case 'T':		/* RowDescription */
 		break;
 	}
-	// slog_info(client, "response: %c ready: %d len: %u ", (char)pkt->type, ready, pkt->len);
 	server->idle_tx = idle_tx;
 	server->ready = ready;
 	server->pool->stats.server_bytes += pkt->len;
@@ -380,9 +379,9 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 			if (cf_log_packets) {
 				if (pkt->type == 'Z') {
 					log_ready_for_query_to_buffer(!server->saw_error, total, pkt, client);
-				} //else if (pkt->type == 'C') {
-				// 	log_command_complete_to_buffer(!server->saw_error, get_cached_time() - client->query_start, client, pkt);
-				// }
+				} else if (pkt->type == 'C') {
+					log_command_complete_to_buffer(!server->saw_error, get_cached_time() - client->query_start, pkt, client);
+				}
 			}		
 
 			/* clear the state if we are ready now */

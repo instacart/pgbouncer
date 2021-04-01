@@ -224,12 +224,6 @@ void log_ready_for_query_to_buffer(bool success, usec_t latency, PktHdr *pkt, Pg
   if (incomplete_pkt(pkt))
     return;
 
-  /* Buffer full, drop the packet logging on the floor.
-   * No logging since this function is called for each incoming packet.
-   *
-   * pkt->len = packet size
-   * + 16 bytes of metadata
-   */
   log_debug("log_ready_for_query_to_buffer: log_ensure_buffer_space");
 
   if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_latency) + pkt->len + sizeof(uint8_t)))
@@ -237,17 +231,6 @@ void log_ready_for_query_to_buffer(bool success, usec_t latency, PktHdr *pkt, Pg
 
   net_latency = htonl(latency > UINT32_MAX ? UINT32_MAX : latency);
 
-  /*
-   * Write the packet to the log file.
-   *
-   * Format:
-   *
-   * client_id - 4 bytes, unsigned
-   * interval    4 bytes, unsigned
-   * packet    - pkt->len bytes, raw
-   *             first byte of the packet is the type
-   *             next 4 bytes of the packet are the length
-   */
   log_debug("log_ready_for_query_to_buffer: writing net_client_id");
   memcpy(buf + len, &net_client_id, sizeof(net_client_id));
   len += sizeof(net_client_id);
@@ -263,6 +246,43 @@ void log_ready_for_query_to_buffer(bool success, usec_t latency, PktHdr *pkt, Pg
   log_debug("log_ready_for_query_to_buffer: writing success bool");
   memcpy(buf + len, &success, sizeof(uint8_t));
   len += sizeof(uint8_t);
+}
+
+/*
+ * Log command complete response packet into the buffer.
+ */
+void log_command_complete_to_buffer(bool success, usec_t latency, PktHdr *pkt, PgSocket *client) {
+  uint32_t net_client_id = htonl(client->client_id),
+           net_latency;
+
+  log_debug("log_command_complete_to_buffer");
+
+  /* If the bouncer is shutting down, the buffer is gone. */
+  if (cf_shutdown)
+    return;
+
+  log_debug("log_command_complete_to_buffer: checking for incomplete_pkt");
+  if (incomplete_pkt(pkt))
+    return;
+
+  log_debug("log_command_complete_to_buffer: log_ensure_buffer_space");
+
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_latency) + pkt->len))
+    return;
+
+  net_latency = htonl(latency > UINT32_MAX ? UINT32_MAX : latency);
+
+  log_debug("log_command_complete_to_buffer: writing net_client_id");
+  memcpy(buf + len, &net_client_id, sizeof(net_client_id));
+  len += sizeof(net_client_id);
+
+  log_debug("log_command_complete_to_buffer: writing net_latency");
+  memcpy(buf + len, &net_latency, sizeof(net_latency));
+  len += sizeof(net_latency);
+
+  log_debug("log_command_complete_to_buffer: writing pkt data");
+  memcpy(buf + len, pkt->data.data, pkt->len);
+  len += pkt->len;
 }
 
 /*

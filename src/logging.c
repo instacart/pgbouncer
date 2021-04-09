@@ -114,6 +114,9 @@ void log_init(void) {
   len = 0;
 
   log_info("Packet logging initialized");
+  if (cf_log_response_packets) {
+    log_info("Response packet logging initialized");
+  }
 }
 
 
@@ -491,7 +494,7 @@ void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg) {
   }
 
   /* Handle enabled packet logging */
-  else if (cf_log_packets || cf_log_response_packets) {
+  else if (cf_log_packets) {
     if (buf == NULL)
       log_init();
 

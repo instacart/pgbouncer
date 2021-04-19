@@ -294,6 +294,7 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 			disconnect_server(server, true, "invalid server parameter");
 			return false;
 		}
+		server->saw_error = true;
 		/* fallthrough */
 	case 'C':		/* CommandComplete */
 
@@ -351,11 +352,11 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 		if (client->state == CL_LOGIN) {
 			return handle_auth_response(client, pkt);
 		} else {
+			usec_t total;
 			sbuf_prepare_send(sbuf, &client->sbuf, pkt->len);
 
 			/* every statement (independent or in a transaction) counts as a query */
 			if ((ready || idle_tx) && client->query_start) {
-				usec_t total;
 				total = get_cached_time() - client->query_start;
 				client->query_start = 0;
 				server->pool->stats.query_time += total;
@@ -366,7 +367,6 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 
 			/* statement ending in "idle" ends a transaction */
 			if (ready && client->xact_start) {
-				usec_t total;
 				total = get_cached_time() - client->xact_start;
 				client->xact_start = 0;
 				server->pool->stats.xact_time += total;
@@ -374,6 +374,19 @@ static bool handle_server_work(PgSocket *server, PktHdr *pkt)
 			} else if (ready && !async_response) {
 				slog_warning(client, "FIXME: transaction end, but xact_start == 0");
 			}
+
+			/* if we are done with a query (even if in the middle of a transaction), log it */
+			if (cf_log_response_packets && cf_log_packets) {
+				if (pkt->type == 'Z') {
+					log_ready_for_query_to_buffer(!server->saw_error, total, pkt, client);
+				} else if (pkt->type == 'C') {
+					log_command_complete_to_buffer(!server->saw_error, get_cached_time() - client->query_start, pkt, client);
+				}
+			}		
+
+			/* clear the state if we are ready now */
+			if (ready && server->saw_error)
+				server->saw_error = false;
 		}
 	} else {
 		if (server->state != SV_TESTED)

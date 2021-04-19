@@ -114,6 +114,9 @@ void log_init(void) {
   len = 0;
 
   log_info("Packet logging initialized");
+  if (cf_log_response_packets) {
+    log_info("Response packet logging initialized");
+  }
 }
 
 
@@ -208,6 +211,84 @@ void log_connect_to_buffer(bool connected, PgSocket *client) {
 }
 
 /*
+ * Log ready for query response packet into the buffer
+ */
+void log_ready_for_query_to_buffer(bool success, usec_t latency, PktHdr *pkt, PgSocket *client) {
+  uint32_t net_client_id = htonl(client->client_id),
+           net_latency;
+
+  log_debug("log_ready_for_query_to_buffer");
+
+  /* If the bouncer is shutting down, the buffer is gone. */
+  if (cf_shutdown)
+    return;
+
+  log_debug("log_ready_for_query_to_buffer: checking for incomplete_pkt");
+  if (incomplete_pkt(pkt))
+    return;
+
+  log_debug("log_ready_for_query_to_buffer: log_ensure_buffer_space");
+
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_latency) + pkt->len + sizeof(uint8_t)))
+    return;
+
+  net_latency = htonl(latency > UINT32_MAX ? UINT32_MAX : latency);
+
+  log_debug("log_ready_for_query_to_buffer: writing net_client_id");
+  memcpy(buf + len, &net_client_id, sizeof(net_client_id));
+  len += sizeof(net_client_id);
+
+  log_debug("log_ready_for_query_to_buffer: writing net_latency");
+  memcpy(buf + len, &net_latency, sizeof(net_latency));
+  len += sizeof(net_latency);
+
+  log_debug("log_ready_for_query_to_buffer: writing pkt data");
+  memcpy(buf + len, pkt->data.data, pkt->len);
+  len += pkt->len;
+
+  log_debug("log_ready_for_query_to_buffer: writing success bool");
+  memcpy(buf + len, &success, sizeof(uint8_t));
+  len += sizeof(uint8_t);
+}
+
+/*
+ * Log command complete response packet into the buffer.
+ */
+void log_command_complete_to_buffer(bool success, usec_t latency, PktHdr *pkt, PgSocket *client) {
+  uint32_t net_client_id = htonl(client->client_id),
+           net_latency;
+
+  log_debug("log_command_complete_to_buffer");
+
+  /* If the bouncer is shutting down, the buffer is gone. */
+  if (cf_shutdown)
+    return;
+
+  log_debug("log_command_complete_to_buffer: checking for incomplete_pkt");
+  if (incomplete_pkt(pkt))
+    return;
+
+  log_debug("log_command_complete_to_buffer: log_ensure_buffer_space");
+
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_latency) + pkt->len))
+    return;
+
+  net_latency = htonl(latency > UINT32_MAX ? UINT32_MAX : latency);
+
+  log_debug("log_command_complete_to_buffer: writing net_client_id");
+  memcpy(buf + len, &net_client_id, sizeof(net_client_id));
+  len += sizeof(net_client_id);
+
+  log_debug("log_command_complete_to_buffer: writing net_latency");
+  memcpy(buf + len, &net_latency, sizeof(net_latency));
+  len += sizeof(net_latency);
+
+  log_debug("log_command_complete_to_buffer: writing pkt data");
+  memcpy(buf + len, pkt->data.data, pkt->len);
+  len += pkt->len;
+}
+
+/*
  * Log packet into the buffer.
  */
 void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
@@ -298,7 +379,7 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
  */
 static bool log_ensure_buffer_space(uint32_t n) {
   if (len + n > LOG_BUFFER_SIZE) {
-    log_info("Warning - Buffer full - current buffer size: %zu, bytes required: %u", len, n);
+    log_warning("Warning - Buffer full - current buffer size: %zu, bytes required: %u", len, n);
     /*
     don't disable logging
 

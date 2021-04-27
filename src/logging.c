@@ -240,11 +240,11 @@ void log_pkt_skipped_to_buffer(PktHdr *pkt, PgSocket *client) {
   memset(buf + len, skipped_char, sizeof(char));
   len += sizeof(char);
 
-  /* length of the reload command */
+  /* length of the skipped packet and self */
   memcpy(buf + len, &net_skipped_len, sizeof(uint32_t));
   len += sizeof(uint32_t);
 
-  /* reload itself */
+  /* skipped packet type */
   strncpy(buf + len, (char*)&pkt->type, sizeof(char));
   len += sizeof(char);
 

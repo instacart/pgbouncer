@@ -65,7 +65,7 @@ static uint16_t file_id = 0;
 
 static const char *reload_command = "RELOAD";
 static const char connect_char = '!';
-static const char skipped_char = 'S';
+static const char skipped_char = '>';
 
 /* Flush packets 4 times per second - every 250ms */
 static struct timeval buffer_drain_period = {0, USEC / 4};
@@ -209,8 +209,9 @@ void log_connect_to_buffer(bool connected, PgSocket *client) {
   log_debug("log_pkt_to_buffer: connected");
   memcpy(buf + len, &connected, sizeof(uint8_t));
   len += sizeof(uint8_t);
-}
 
+
+}
 
 /*
  * Log skipped packet to buffer.

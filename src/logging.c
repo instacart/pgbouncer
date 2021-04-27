@@ -65,6 +65,7 @@ static uint16_t file_id = 0;
 
 static const char *reload_command = "RELOAD";
 static const char connect_char = '!';
+static const char skipped_char = 'S';
 
 /* Flush packets 4 times per second - every 250ms */
 static struct timeval buffer_drain_period = {0, USEC / 4};
@@ -210,6 +211,44 @@ void log_connect_to_buffer(bool connected, PgSocket *client) {
   len += sizeof(uint8_t);
 }
 
+
+/*
+ * Log skipped packet to buffer.
+ */
+void log_pkt_skipped_to_buffer(PktHdr *pkt, PgSocket *client) {
+
+  uint32_t net_client_id = htonl(client->client_id);
+  uint32_t net_skipped_len = htonl(sizeof(char) + sizeof(uint32_t));
+  uint32_t net_pkt_len = htonl((uint32_t)pkt->len);
+
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_pkt_len) + sizeof(char) + sizeof(net_skipped_len) + sizeof(char))) {
+    log_info("Can't issue SKIPPED command to replayer, buffer full");
+    return;
+  }
+
+  /* client id */
+  memcpy(buf + len, &net_client_id, sizeof(net_client_id));
+  len += sizeof(net_client_id);
+
+  /* skipped packet length */
+  memcpy(buf + len, &net_pkt_len, sizeof(net_pkt_len));
+  // log_info("Interval %d", buf[len]);
+  len += sizeof(net_pkt_len);
+
+  /* custom type */
+  memset(buf + len, skipped_char, sizeof(char));
+  len += sizeof(char);
+
+  /* length of the reload command */
+  memcpy(buf + len, &net_skipped_len, sizeof(uint32_t));
+  len += sizeof(uint32_t);
+
+  /* reload itself */
+  strncpy(buf + len, (char*)&pkt->type, sizeof(char));
+  len += sizeof(char);
+
+}
+
 /*
  * Log ready for query response packet into the buffer
  */
@@ -224,8 +263,10 @@ void log_ready_for_query_to_buffer(bool success, usec_t latency, PktHdr *pkt, Pg
     return;
 
   log_debug("log_ready_for_query_to_buffer: checking for incomplete_pkt");
-  if (incomplete_pkt(pkt))
+  if (incomplete_pkt(pkt)) {
+    log_pkt_skipped_to_buffer(pkt, client);
     return;
+  }
 
   log_debug("log_ready_for_query_to_buffer: log_ensure_buffer_space");
 
@@ -265,8 +306,10 @@ void log_command_complete_to_buffer(bool success, usec_t latency, PktHdr *pkt, P
     return;
 
   log_debug("log_command_complete_to_buffer: checking for incomplete_pkt");
-  if (incomplete_pkt(pkt))
+  if (incomplete_pkt(pkt)) {
+    log_pkt_skipped_to_buffer(pkt, client);
     return;
+  }
 
   log_debug("log_command_complete_to_buffer: log_ensure_buffer_space");
 
@@ -302,8 +345,10 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
     return;
 
   log_debug("log_pkt_to_buffer: checking for incomplete_pkt");
-  if (incomplete_pkt(pkt))
+  if (incomplete_pkt(pkt)) {
+    log_pkt_skipped_to_buffer(pkt, client);
     return;
+  }
 
   /* Log only supported packets.
    * P - prepared statement

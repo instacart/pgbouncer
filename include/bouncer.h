@@ -532,6 +532,7 @@ extern int cf_tcp_user_timeout;
 extern int cf_log_connections;
 extern int cf_log_packets;
 extern int cf_log_response_packets;
+extern int cf_buffer_incomplete_packets;
 extern char *cf_log_packets_file;
 extern int cf_log_disconnections;
 extern int cf_log_pooler_errors;

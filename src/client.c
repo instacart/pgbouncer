@@ -876,18 +876,20 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	if (client->pool->db->admin)
 		return admin_handle_client(client, pkt);
 
-	if (pkt->type == 'Q' || pkt->type == 'P' || pkt->type == 'B' || pkt->type == 'E') {		
-		if (incomplete_pkt(pkt)) {
-			// If smaller incomplete and smaller than pkt_buf we can wait for full query
-			if ((int)pkt->len <= (int)cf_sbuf_len) {
-				const uint8_t *pkt_content;
-				unsigned len;
-				len = mbuf_avail_for_read(&pkt->data);
-				if (mbuf_get_bytes(&pkt->data, len, &pkt_content)) {
-					log_info("incomplete packet: %s", pkt_content);
-				}
-				if (cf_buffer_incomplete_packets) {
-					return false;
+	if (cf_log_packets) {
+		if (pkt->type == 'Q' || pkt->type == 'P' || pkt->type == 'B' || pkt->type == 'E') {		
+			if (incomplete_pkt(pkt)) {
+				// If smaller incomplete and smaller than pkt_buf we can wait for full query
+				if ((int)pkt->len <= (int)cf_sbuf_len) {
+					const uint8_t *pkt_content;
+					unsigned len;
+					len = mbuf_avail_for_read(&pkt->data);
+					if (mbuf_get_bytes(&pkt->data, len, &pkt_content)) {
+						log_info("incomplete packet: %s", pkt_content);
+					}
+					if (cf_buffer_incomplete_packets) {
+						return false;
+					}
 				}
 			}
 		}

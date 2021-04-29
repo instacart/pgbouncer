@@ -876,6 +876,18 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	if (client->pool->db->admin)
 		return admin_handle_client(client, pkt);
 
+	if (pkt->type == 'Q' || pkt->type == 'P' || pkt->type == 'B' || pkt->type == 'E') {
+		if (incomplete_pkt(pkt)) {
+			// If smaller incomplete and smaller than pkt_buf we can wait for full query
+			if ((int)pkt->len <= (int)cf_sbuf_len) {
+				const char *key;
+				mbuf_get_string(&pkt->data, &key);
+				log_info("incomplete query string: %s", key);
+			}
+		}
+	}
+
+
 	/* acquire server */
 	if (!find_server(client))
 		return false;
@@ -895,8 +907,11 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
 
 	/* log the query, if needed */
-	if (cf_log_packets)
-		log_pkt_to_buffer(pkt, client);
+	if (cf_log_packets) {
+		if (pkt->type == 'Q' || pkt->type == 'P' || pkt->type == 'B' || pkt->type == 'E') {
+			log_pkt_to_buffer(pkt, client);
+		}
+	}
 
 	return true;
 }

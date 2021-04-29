@@ -806,6 +806,8 @@ static bool handle_client_startup(PgSocket *client, PktHdr *pkt)
 	return true;
 }
 
+int incomplete_packet_log_counter;
+
 /* decide on packets of logged-in client */
 static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 {
@@ -885,7 +887,13 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 					unsigned len;
 					len = mbuf_avail_for_read(&pkt->data);
 					if (mbuf_get_bytes(&pkt->data, len, &pkt_content)) {
-						log_info("incomplete packet: %s", pkt_content);
+						if (incomplete_packet_log_counter == cf_log_incomplete_skipped_packet_content_frequency) {
+							log_info("incomplete packet: %s", pkt_content);
+						}
+						incomplete_packet_log_counter++;
+						if (incomplete_packet_log_counter > cf_log_incomplete_skipped_packet_content_frequency) {
+							incomplete_packet_log_counter = 0;
+						}
 					}
 					if (cf_buffer_incomplete_packets) {
 						return false;

@@ -369,6 +369,13 @@ struct PgDatabase {
  */
 struct PgSocket {
 	uint32_t client_id; /* A "unique" id of the client */
+	struct IncompletePacketBuffer {
+		bool started;
+		struct MBuf *pkt_data;
+		unsigned int pkt_len;
+		unsigned int pkt_len_written;
+	} incomplete_packet_buffer;
+
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
 	PgPool *pool;		/* parent pool, if NULL not yet assigned */
@@ -532,6 +539,7 @@ extern int cf_tcp_user_timeout;
 extern int cf_log_connections;
 extern int cf_log_packets;
 extern int cf_log_response_packets;
+extern int cf_buffer_incomplete_packets;
 extern char *cf_log_packets_file;
 extern int cf_log_disconnections;
 extern int cf_log_pooler_errors;

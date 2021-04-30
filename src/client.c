@@ -806,7 +806,7 @@ static bool handle_client_startup(PgSocket *client, PktHdr *pkt)
 	return true;
 }
 
-int custom_log_frequency_counter;
+int custom_log_frequency_counter = 500;
 
 /* decide on packets of logged-in client */
 static bool handle_client_work(PgSocket *client, PktHdr *pkt)
@@ -907,13 +907,10 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 						client->incomplete_packet_buffer.started = true;
 						client->incomplete_packet_buffer.pkt_data = &pkt->data;
 						client->incomplete_packet_buffer.pkt_len = pkt->len;
-						if (custom_log_frequency_counter >= 500) {
+						if (custom_log_frequency_counter % 500 == 0) {
 							log_info("Incomplete: ID: %u, LEN %u, WRI %u", client->client_id, pkt->len, mbuf_written(&pkt->data));
 						}
 						custom_log_frequency_counter++;
-						if (custom_log_frequency_counter >= 500) {
-							custom_log_frequency_counter = 0;
-						}
 					}
 				}
 			}

@@ -899,31 +899,35 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	if (cf_log_packets) {
 		if (pkt->type == 'Q' || pkt->type == 'P' || pkt->type == 'B' || pkt->type == 'E') {
 			log_pkt_to_buffer(pkt, client);
-			
-			// Check packet incomplete and assign values to struct
-			if (cf_buffer_incomplete_packets) {
-				if (incomplete_pkt(pkt)) {
-					if ((int)pkt->len > (int)cf_sbuf_len) {
-						client->incomplete_packet_buffer.started = true;
-						client->incomplete_packet_buffer.pkt_data = &pkt->data;
-						client->incomplete_packet_buffer.pkt_len = pkt->len;
-						if (custom_log_frequency_counter % 500 == 0) {
-							log_info("Incomplete: ID: %u, LEN %u, WRI %u", client->client_id, pkt->len, mbuf_written(&pkt->data));
-						}
-						custom_log_frequency_counter++;
-					}
+			if (incomplete_pkt(pkt)) {
+				if ((int)pkt->len > (int)cf_sbuf_len) {
+					sbuf->found_incomplete = 1;
 				}
 			}
+		// 	// Check packet incomplete and assign values to struct
+		// 	if (cf_buffer_incomplete_packets) {
+		// 		if (incomplete_pkt(pkt)) {
+		// 			if ((int)pkt->len > (int)cf_sbuf_len) {
+		// 				client->incomplete_packet_buffer.started = true;
+		// 				client->incomplete_packet_buffer.pkt_data = &pkt->data;
+		// 				client->incomplete_packet_buffer.pkt_len = pkt->len;
+		// 				if (custom_log_frequency_counter % 500 == 0) {
+		// 					log_info("Incomplete: ID: %u, LEN %u, WRI %u", client->client_id, pkt->len, mbuf_written(&pkt->data));
+		// 				}
+		// 				custom_log_frequency_counter++;
+		// 			}
+		// 		}
+		// 	}
 			
-		}
+		// }
 
-		if (cf_buffer_incomplete_packets) {
-			if (client->incomplete_packet_buffer.started) {
-				if (mbuf_written(client->incomplete_packet_buffer.pkt_data) == client->incomplete_packet_buffer.pkt_len) {
-					log_info("Completed: ID: %u, LEN %u, WRI %u", client->client_id, pkt->len, mbuf_written(&pkt->data));
-					client->incomplete_packet_buffer.started = false;
-				}
-			}
+		// if (cf_buffer_incomplete_packets) {
+		// 	if (client->incomplete_packet_buffer.started) {
+		// 		if (mbuf_written(client->incomplete_packet_buffer.pkt_data) == client->incomplete_packet_buffer.pkt_len) {
+		// 			log_info("Completed: ID: %u, LEN %u, WRI %u", client->client_id, pkt->len, mbuf_written(&pkt->data));
+		// 			client->incomplete_packet_buffer.started = false;
+		// 		}
+		// 	}
 		}
 	}
 

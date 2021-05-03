@@ -67,6 +67,7 @@ struct SBufIO {
  */
 struct SBuf {
 	struct event ev;	/* libevent handle */
+	int found_incomplete; /* bool to check if an incomplete packet has been found */
 
 	uint8_t wait_type;	/* track wait state */
 	uint8_t pkt_action;	/* method for handling current pkt */

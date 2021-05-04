@@ -525,14 +525,14 @@ try_more:
 	/* actually send it */
 	//res = iobuf_send_pending(io, sbuf->dst->sock);
 	if (sbuf->found_incomplete == 1) {
-		log_info("done: %s", io->buf + io->done_pos);
-		log_info("pars: %s", io->buf + io->parse_pos);
-		log_info("recv: %s", io->buf + io->recv_pos);
+		log_info("ID: %u, done: %s", sbuf->client_id, io->buf + io->done_pos);
+		log_info("ID: %u, pars: %s", sbuf->client_id, io->buf + io->parse_pos);
+		log_info("ID: %u, recv: %s", sbuf->client_id, io->buf + io->recv_pos);
 		sbuf->found_incomplete = 2;
 	} else if (sbuf->found_incomplete == 2) {
-		log_info("done: %s", io->buf + io->done_pos);
-		log_info("pars: %s", io->buf + io->parse_pos);
-		log_info("recv: %s", io->buf + io->recv_pos);
+		log_info("ID: %u, done: %s", sbuf->client_id, io->buf + io->done_pos);
+		log_info("ID: %u, pars: %s", sbuf->client_id, io->buf + io->parse_pos);
+		log_info("ID: %u, recv: %s", sbuf->client_id, io->buf + io->recv_pos);
 		sbuf->found_incomplete = 0;
 	}
 	res = sbuf_op_send(sbuf->dst, io->buf + io->done_pos, avail);

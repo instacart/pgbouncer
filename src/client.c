@@ -899,6 +899,8 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	if (cf_log_packets) {
 		if (pkt->type == 'Q' || pkt->type == 'P' || pkt->type == 'B' || pkt->type == 'E') {
 			log_pkt_to_buffer(pkt, client);
+
+			
 			if (incomplete_pkt(pkt)) {
 				if ((int)pkt->len <= (int)cf_sbuf_len) {
 					sbuf->found_incomplete = 1;
@@ -912,6 +914,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 					client->incomplete_packet_buffer.pkt_data = &pkt->data;
 					client->incomplete_packet_buffer.pkt_len = pkt->len;
 					// if (custom_log_frequency_counter % 500 == 0) {
+					log_info("pkt %s", pkt->data.data + pkt->data.read_pos);
 					log_info("Incomplete: ID: %u, LEN %u, WRI %u", client->client_id, pkt->len, mbuf_written(&pkt->data));
 					// }
 					// custom_log_frequency_counter++;

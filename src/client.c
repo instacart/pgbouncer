@@ -925,7 +925,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 		if (cf_buffer_incomplete_packets) {
 			if (client->incomplete_packet_buffer.started) {
 				if (mbuf_written(client->incomplete_packet_buffer.pkt_data) == client->incomplete_packet_buffer.pkt_len) {
-					log_info("Completed: ID: %u, LEN %u, WRI %u", client->client_id, pkt->len, mbuf_written(&pkt->data));
+					log_info("Completed: ID: %u, LEN %u, WRI %u, pkt %s", client->client_id, pkt->len, mbuf_written(&pkt->data), client->incomplete_packet_buffer.pkt_data->data + client->incomplete_packet_buffer.pkt_data->read_pos);
 					client->incomplete_packet_buffer.started = false;
 				}
 			}

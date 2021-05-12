@@ -524,19 +524,26 @@ try_more:
 
 	/* actually send it */
 	//res = iobuf_send_pending(io, sbuf->dst->sock);
-	if (sbuf->found_incomplete == 1) {
-		log_info("ID: %u, done: %s", sbuf->client_id, io->buf + io->done_pos);
-		log_info("ID: %u, pars: %s", sbuf->client_id, io->buf + io->parse_pos);
-		log_info("ID: %u, recv: %s", sbuf->client_id, io->buf + io->recv_pos);
-		sbuf->found_incomplete = 2;
-	} else if (sbuf->found_incomplete == 2) {
-		log_info("ID: %u, done: %s", sbuf->client_id, io->buf + io->done_pos);
-		log_info("ID: %u, pars: %s", sbuf->client_id, io->buf + io->parse_pos);
-		log_info("ID: %u, recv: %s", sbuf->client_id, io->buf + io->recv_pos);
-		sbuf->found_incomplete = 0;
-	}
+
 	res = sbuf_op_send(sbuf->dst, io->buf + io->done_pos, avail);
 	if (res > 0) {
+		if (cf_buffer_incomplete_packets && sbuf->incomplete_packet_handler.found_incomplete == 1) {
+			
+			memcpy(sbuf->incomplete_packet_handler.packet_buffer + sbuf->incomplete_packet_handler.packet_buffer_pos, io->buf + io->done_pos, res);
+			sbuf->incomplete_packet_handler.packet_buffer_pos += res;
+			sbuf->incomplete_packet_handler.current_packet_len += avail;
+
+			if (sbuf->incomplete_packet_handler.current_packet_len == sbuf->incomplete_packet_handler.desired_packet_len) {
+				log_stitched_packet_to_buffer(sbuf->incomplete_packet_handler.packet_buffer, sbuf->incomplete_packet_handler.desired_packet_len, sbuf->incomplete_packet_handler.client);
+				free(sbuf->incomplete_packet_handler.packet_buffer);
+				sbuf->incomplete_packet_handler.found_incomplete = 0;
+			} else if (sbuf->incomplete_packet_handler.current_packet_len > sbuf->incomplete_packet_handler.desired_packet_len) {
+				log_info("(CLIENT %u) Logical error in handling packet stitching, exceeded desired length", sbuf->incomplete_packet_handler.client->client_id);
+				free(sbuf->incomplete_packet_handler.packet_buffer);
+				sbuf->incomplete_packet_handler.found_incomplete = 0;
+			}
+		} 
+
 		io->done_pos += res;
 	} else if (res < 0) {
 		if (errno == EAGAIN) {

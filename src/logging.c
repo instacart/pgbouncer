@@ -251,6 +251,53 @@ void log_pkt_skipped_to_buffer(PktHdr *pkt, PgSocket *client) {
 }
 
 /*
+ * Log stitched together incomplete packet into the buffer.
+ */
+void log_stitched_packet_to_buffer(uint8_t *packet_buffer, unsigned pkt_len, PgSocket *client) {
+  
+  uint32_t net_client_id = htonl(client->client_id),
+           query_interval = 0, net_query_interval;
+
+
+  // /* If the bouncer is shutting down, the buffer is gone. */
+  if (cf_shutdown)
+    return;
+
+
+  if (!log_ensure_buffer_space(sizeof(net_client_id) + sizeof(net_query_interval) + pkt_len))
+    return;
+
+  /* record intervals between packets */
+  log_debug("log_stitched_packet_to_buffer: calc interval");
+  if (client->last_pkt > 0) {
+    usec_t query_interval_usec = get_cached_time() - client->last_pkt;
+
+    if (query_interval_usec > UINT32_MAX) {
+      query_interval = UINT32_MAX; /* up to about an hour between queries */
+    } else {
+      query_interval = (uint32_t)query_interval_usec;
+    }
+  }
+
+  client->last_pkt = get_cached_time();
+
+  net_query_interval = htonl(query_interval);
+
+  log_debug("log_stitched_packet_to_buffer: writing net_client_id");
+  memcpy(buf + len, &net_client_id, sizeof(net_client_id));
+  len += sizeof(net_client_id);
+
+  log_debug("log_stitched_packet_to_buffer: writing net_query_interval");
+  memcpy(buf + len, &net_query_interval, sizeof(net_query_interval));
+  len += sizeof(net_query_interval);
+
+  log_debug("log_stitched_packet_to_buffer: writing pkt data");
+  memcpy(buf + len, packet_buffer, pkt_len);
+  len += pkt_len;
+
+}
+
+/*
  * Log ready for query response packet into the buffer
  */
 void log_ready_for_query_to_buffer(bool success, usec_t latency, PktHdr *pkt, PgSocket *client) {

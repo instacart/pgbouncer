@@ -369,12 +369,6 @@ struct PgDatabase {
  */
 struct PgSocket {
 	uint32_t client_id; /* A "unique" id of the client */
-	struct IncompletePacketBuffer {
-		bool started;
-		struct MBuf *pkt_data;
-		unsigned int pkt_len;
-		unsigned int pkt_len_written;
-	} incomplete_packet_buffer;
 
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */

@@ -898,37 +898,29 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 
 	if (cf_log_packets) {
 		if (pkt->type == 'Q' || pkt->type == 'P' || pkt->type == 'B' || pkt->type == 'E') {
+			// This comes before the incomplete check, so we can track that we have skipped packets
+			// then use that as a reference for when we should no longer see errors
 			log_pkt_to_buffer(pkt, client);
 
 			// Check packet incomplete and assign values to struct
 			if (cf_buffer_incomplete_packets) {
 				if (incomplete_pkt(pkt)) {
 					if ((int)pkt->len <= (int)cf_sbuf_len) {
-						client->incomplete_packet_buffer.started = true;
-						client->incomplete_packet_buffer.pkt_data = &pkt->data;
-						client->incomplete_packet_buffer.pkt_len = pkt->len;
-						if (custom_log_frequency_counter % 500 == 0) {
-							log_info("ID: %u, pkt %s", client->client_id, pkt->data.data + pkt->data.read_pos);
-							log_info("Incomplete: ID: %u, LEN %u, WRI %u", client->client_id, pkt->len, mbuf_written(&pkt->data));
-							sbuf->found_incomplete = 1;
-							sbuf->client_id = client->client_id;
+						if (sbuf->incomplete_packet_handler.found_incomplete == 1) {
+							log_info("(CLIENT %u) Found new incomplete packet while handling existing incomplete packet", client->client_id);
+							free(sbuf->incomplete_packet_handler.packet_buffer);
+							sbuf->incomplete_packet_handler.found_incomplete = 0;
 						}
-						custom_log_frequency_counter++;
-
-						
+						sbuf->incomplete_packet_handler.client = client;
+						sbuf->incomplete_packet_handler.found_incomplete = 1;
+						sbuf->incomplete_packet_handler.current_packet_len = 0;
+						sbuf->incomplete_packet_handler.desired_packet_len = pkt->len;
+						sbuf->incomplete_packet_handler.packet_buffer = malloc(pkt->len);
+						sbuf->incomplete_packet_handler.packet_buffer_pos = 0;
 					}
 				}
 			}
 			
-		}
-
-		if (cf_buffer_incomplete_packets) {
-			if (client->incomplete_packet_buffer.started) {
-				if (mbuf_written(client->incomplete_packet_buffer.pkt_data) == client->incomplete_packet_buffer.pkt_len) {
-					log_info("Completed: ID: %u, LEN %u, WRI %u, pkt %s", client->client_id, pkt->len, mbuf_written(&pkt->data), client->incomplete_packet_buffer.pkt_data->data + client->incomplete_packet_buffer.pkt_data->read_pos);
-					client->incomplete_packet_buffer.started = false;
-				}
-			}
 		}
 	}
 

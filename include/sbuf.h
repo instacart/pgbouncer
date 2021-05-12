@@ -67,8 +67,15 @@ struct SBufIO {
  */
 struct SBuf {
 	struct event ev;	/* libevent handle */
-	int found_incomplete; /* bool to check if an incomplete packet has been found */
-	uint32_t client_id; /* A "unique" id of the client */
+
+	struct IncompletePacketHandler {
+		int found_incomplete; /* bool to check if an incomplete packet has been found */
+		size_t current_packet_len; /* tracks number of bytes written to buffer */
+		unsigned desired_packet_len; /* length of complete packet */
+		PgSocket *client; /* reference to client of the sbuf */
+		uint8_t *packet_buffer; /* buffer for holding the part of the packet */
+		size_t packet_buffer_pos; /* buffer for holding the part of the packet */
+	} incomplete_packet_handler;
 
 	uint8_t wait_type;	/* track wait state */
 	uint8_t pkt_action;	/* method for handling current pkt */

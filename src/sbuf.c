@@ -533,9 +533,13 @@ try_more:
 			sbuf->incomplete_packet_handler.packet_buffer_pos += res;
 			sbuf->incomplete_packet_handler.current_packet_len += avail;
 
-			char hex[sbuf->incomplete_packet_handler.current_packet_len*2 + 1];
-			bin2hex(sbuf->incomplete_packet_handler.packet_buffer, sbuf->incomplete_packet_handler.current_packet_len, hex, sizeof(hex));
-			log_info("(CLIENT %u) HEX: %s", sbuf->incomplete_packet_handler.client->client_id, hex);
+			char hex_curr[res*2 + 1];
+			bin2hex(io->buf + io->done_pos, res, hex_curr, sizeof(hex_curr));
+			log_info("(CLIENT %u) CURRENT HEX: %s", sbuf->incomplete_packet_handler.client->client_id, hex_curr);
+
+			char hex_total[sbuf->incomplete_packet_handler.current_packet_len*2 + 1];
+			bin2hex(sbuf->incomplete_packet_handler.packet_buffer, sbuf->incomplete_packet_handler.current_packet_len, hex_total, sizeof(hex_total));
+			log_info("(CLIENT %u) TOTAL HEX: %s", sbuf->incomplete_packet_handler.client->client_id, hex_total);
 			
 			if (sbuf->incomplete_packet_handler.current_packet_len == sbuf->incomplete_packet_handler.desired_packet_len) {
 				log_stitched_packet_to_buffer(sbuf->incomplete_packet_handler.packet_buffer, sbuf->incomplete_packet_handler.desired_packet_len, sbuf->incomplete_packet_handler.client);

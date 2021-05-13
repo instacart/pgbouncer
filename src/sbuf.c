@@ -549,7 +549,7 @@ try_more:
 				sbuf->incomplete_packet_handler.packet_buffer = NULL;
 				sbuf->incomplete_packet_handler.found_incomplete = 0;
 			// In the future make this if statement exact for 37 if it works
-			} else if (sbuf->incomplete_packet_handler.current_packet_len - 40 <= sbuf->incomplete_packet_handler.desired_packet_len) {
+			} else if (sbuf->incomplete_packet_handler.current_packet_len - 37 == sbuf->incomplete_packet_handler.desired_packet_len) {
 				log_stitched_packet_to_buffer(sbuf->incomplete_packet_handler.packet_buffer, sbuf->incomplete_packet_handler.current_packet_len, sbuf->incomplete_packet_handler.client);
 				free(sbuf->incomplete_packet_handler.packet_buffer);
 				sbuf->incomplete_packet_handler.packet_buffer = NULL;

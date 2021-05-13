@@ -532,10 +532,11 @@ try_more:
 			memcpy(sbuf->incomplete_packet_handler.packet_buffer + sbuf->incomplete_packet_handler.packet_buffer_pos, io->buf + io->done_pos, res);
 			sbuf->incomplete_packet_handler.packet_buffer_pos += res;
 			sbuf->incomplete_packet_handler.current_packet_len += avail;
-			int i;
-			for (i = 0; i < 6; i++) {
-				log_info("(CLIENT %u) packet buff: %s", sbuf->incomplete_packet_handler.client->client_id, &sbuf->incomplete_packet_handler.packet_buffer[i]);
-			}
+
+			char hex[sbuf->incomplete_packet_handler.current_packet_len*2 + 1];
+			bin2hex(sbuf->incomplete_packet_handler.packet_buffer, sbuf->incomplete_packet_handler.current_packet_len, hex, sizeof(hex));
+			log_info("(CLIENT %u) HEX: %s", sbuf->incomplete_packet_handler.client->client_id, hex);
+			
 			if (sbuf->incomplete_packet_handler.current_packet_len == sbuf->incomplete_packet_handler.desired_packet_len) {
 				log_stitched_packet_to_buffer(sbuf->incomplete_packet_handler.packet_buffer, sbuf->incomplete_packet_handler.desired_packet_len, sbuf->incomplete_packet_handler.client);
 				free(sbuf->incomplete_packet_handler.packet_buffer);

@@ -903,7 +903,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 			// Check packet incomplete and assign values to struct
 			if (cf_buffer_incomplete_packets) {
 				if (incomplete_pkt(pkt)) {
-					if ((int)pkt->len <= (int)cf_sbuf_len) {
+					// if ((int)pkt->len <= (int)cf_sbuf_len) {
 						if (sbuf->incomplete_packet_handler.found_incomplete == 1) {
 							log_info("(CLIENT %u) Found new incomplete packet while handling existing incomplete packet", client->client_id);
 							log_info("(CLIENT %u) freeing buffer space", client->client_id);
@@ -921,7 +921,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 						// Incase we go over once we have this extra room
 						sbuf->incomplete_packet_handler.packet_buffer = malloc(pkt->len + cf_sbuf_len);
 						log_info("(CLIENT %u) done assigning buffer space: %u", client->client_id, pkt->len + cf_sbuf_len);
-					}
+					// }
 				}
 			}
 			

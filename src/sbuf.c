@@ -548,6 +548,12 @@ try_more:
 				free(sbuf->incomplete_packet_handler.packet_buffer);
 				sbuf->incomplete_packet_handler.packet_buffer = NULL;
 				sbuf->incomplete_packet_handler.found_incomplete = 0;
+			// In the future make this if statement exact for 37 if it works
+			} else if (sbuf->incomplete_packet_handler.current_packet_len - 40 <= sbuf->incomplete_packet_handler.desired_packet_len) {
+				log_stitched_packet_to_buffer(sbuf->incomplete_packet_handler.packet_buffer, sbuf->incomplete_packet_handler.current_packet_len, sbuf->incomplete_packet_handler.client);
+				free(sbuf->incomplete_packet_handler.packet_buffer);
+				sbuf->incomplete_packet_handler.packet_buffer = NULL;
+				sbuf->incomplete_packet_handler.found_incomplete = 0;
 			} else if (sbuf->incomplete_packet_handler.current_packet_len > sbuf->incomplete_packet_handler.desired_packet_len) {
 				log_info("(CLIENT %u) Logical error in handling packet stitching, exceeded desired length (%zu, %u)", sbuf->incomplete_packet_handler.client->client_id, sbuf->incomplete_packet_handler.current_packet_len, sbuf->incomplete_packet_handler.desired_packet_len);
 				log_info("(CLIENT %u) freeing buffer space", sbuf->incomplete_packet_handler.client->client_id);

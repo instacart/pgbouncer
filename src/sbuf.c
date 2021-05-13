@@ -533,6 +533,8 @@ try_more:
 			sbuf->incomplete_packet_handler.packet_buffer_pos += res;
 			sbuf->incomplete_packet_handler.current_packet_len += avail;
 
+			log_info("(CLIENT %u) RES: %d", sbuf->incomplete_packet_handler.client->client_id, res);
+
 			char hex_curr[res*2 + 1];
 			bin2hex(io->buf + io->done_pos, res, hex_curr, sizeof(hex_curr));
 			log_info("(CLIENT %u) CURRENT HEX: %s", sbuf->incomplete_packet_handler.client->client_id, hex_curr);

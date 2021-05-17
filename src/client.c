@@ -906,10 +906,8 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 					if ((int)pkt->len <= (int)cf_sbuf_len) {
 						if (sbuf->incomplete_packet_handler.found_incomplete == 1) {
 							log_info("(CLIENT %u) Found new incomplete packet while handling existing incomplete packet", client->client_id);
-							log_info("(CLIENT %u) freeing buffer space", client->client_id);
 							free(sbuf->incomplete_packet_handler.packet_buffer);
 							sbuf->incomplete_packet_handler.packet_buffer = NULL;
-							log_info("(CLIENT %u) freeing buffer space done", client->client_id);
 							sbuf->incomplete_packet_handler.found_incomplete = 0;
 						}
 						sbuf->incomplete_packet_handler.client = client;
@@ -917,10 +915,9 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 						sbuf->incomplete_packet_handler.current_packet_len = 0;
 						sbuf->incomplete_packet_handler.desired_packet_len = pkt->len;
 						sbuf->incomplete_packet_handler.packet_buffer_pos = 0;
-						log_info("(CLIENT %u) assigning buffer space: %u", client->client_id, pkt->len + cf_sbuf_len);
 						// Incase we go over once we have this extra room
+						log_info("(CLIENT %u) assigning buffer space for (%u): %u", client->client_id, pkt->len, pkt->len + cf_sbuf_len);
 						sbuf->incomplete_packet_handler.packet_buffer = malloc(pkt->len + cf_sbuf_len);
-						log_info("(CLIENT %u) done assigning buffer space: %u", client->client_id, pkt->len + cf_sbuf_len);
 					}
 				}
 			}

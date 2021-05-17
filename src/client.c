@@ -920,6 +920,10 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 						sbuf->incomplete_packet_handler.packet_buffer = malloc(pkt->len + cf_sbuf_len);
 					}
 				}
+				
+				if (sbuf->incomplete_packet_handler.found_incomplete == 1) {
+					log_info("(CLIENT %u), type %c", client->client_id, pkt->type);
+				}
 			}
 			
 		}

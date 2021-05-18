@@ -66,6 +66,7 @@ static uint16_t file_id = 0;
 static const char *reload_command = "RELOAD";
 static const char connect_char = '!';
 static const char skipped_char = '>';
+static const char completed_skipped_char = '+';
 
 /* Flush packets 4 times per second - every 250ms */
 static struct timeval buffer_drain_period = {0, USEC / 4};
@@ -256,7 +257,8 @@ void log_pkt_skipped_to_buffer(PktHdr *pkt, PgSocket *client) {
 void log_stitched_packet_to_buffer(uint8_t *packet_buffer, unsigned pkt_len, PgSocket *client) {
   
   uint32_t net_client_id = htonl(client->client_id),
-           query_interval = 0, net_query_interval;
+           query_interval = 0, net_query_interval,
+           net_dummy_len = htonl(sizeof(char));
 
 
   // /* If the bouncer is shutting down, the buffer is gone. */
@@ -290,6 +292,12 @@ void log_stitched_packet_to_buffer(uint8_t *packet_buffer, unsigned pkt_len, PgS
   log_debug("log_stitched_packet_to_buffer: writing net_query_interval");
   memcpy(buf + len, &net_query_interval, sizeof(net_query_interval));
   len += sizeof(net_query_interval);
+
+  memset(buf + len, completed_skipped_char, sizeof(char));
+  len += sizeof(char);
+
+  memcpy(buf + len, &net_dummy_len, sizeof(uint32_t));
+  len += sizeof(uint32_t);
 
   log_debug("log_stitched_packet_to_buffer: writing pkt data");
   memcpy(buf + len, packet_buffer, pkt_len);

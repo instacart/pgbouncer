@@ -891,8 +891,6 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	client->link->ready = false;
 	client->link->idle_tx = false;
 
-	/* forward the packet */
-	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
 
 	if (cf_log_packets) {
 		if (pkt->type == 'Q' || pkt->type == 'P' || pkt->type == 'B' || pkt->type == 'E') {
@@ -925,9 +923,11 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 					log_info("(CLIENT %u), type %c", client->client_id, pkt->type);
 				}
 			}
-			
 		}
 	}
+
+	/* forward the packet */
+	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
 
 	return true;
 }

@@ -900,7 +900,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 
 			// Check packet incomplete and assign values to struct
 			if (cf_buffer_incomplete_packets) {
-				if (incomplete_pkt(pkt)) {
+				if (incomplete_pkt(pkt) && (pkt->type == 'P' || pkt->type == 'Q')) {
 					if ((int)pkt->len <= (int)cf_sbuf_len) {
 						if (sbuf->incomplete_packet_handler.found_incomplete == 1) {
 							log_info("(CLIENT %u) Found new incomplete packet while handling existing incomplete packet", client->client_id);

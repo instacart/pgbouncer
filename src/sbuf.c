@@ -537,7 +537,7 @@ try_more:
 
 			char hex_curr[res*2 + 1];
 			bin2hex(io->buf + io->done_pos, res, hex_curr, sizeof(hex_curr));
-			log_info("(CLIENT %u) CURRENT HEX: %s\n", sbuf->incomplete_packet_handler.client->client_id, hex_curr);
+			printf("(CLIENT %u) CURRENT HEX: %s\n", sbuf->incomplete_packet_handler.client->client_id, hex_curr);
 
 			// char hex_total[sbuf->incomplete_packet_handler.current_packet_len*2 + 1];
 			// bin2hex(sbuf->incomplete_packet_handler.packet_buffer, sbuf->incomplete_packet_handler.current_packet_len, hex_total, sizeof(hex_total));

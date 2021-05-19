@@ -908,6 +908,7 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 							sbuf->incomplete_packet_handler.packet_buffer = NULL;
 							sbuf->incomplete_packet_handler.found_incomplete = 0;
 						}
+						// todo add last packet timestamp to this
 						sbuf->incomplete_packet_handler.client = client;
 						sbuf->incomplete_packet_handler.found_incomplete = 1;
 						sbuf->incomplete_packet_handler.current_packet_len = 0;

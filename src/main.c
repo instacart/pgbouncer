@@ -155,6 +155,8 @@ int cf_log_disconnections;
 int cf_log_pooler_errors;
 int cf_application_name_add_host;
 int cf_log_packets;
+int cf_log_response_packets;
+int cf_buffer_incomplete_packets;
 char *cf_log_packets_file;
 
 int cf_client_tls_sslmode;
@@ -290,6 +292,8 @@ CF_ABS("stats_period", CF_INT, cf_stats_period, 0, "60"),
 CF_ABS("log_stats", CF_INT, cf_log_stats, 0, "1"),
 CF_ABS("log_connections", CF_INT, cf_log_connections, 0, "1"),
 CF_ABS("log_packets", CF_INT, cf_log_packets, 0, "0"),
+CF_ABS("log_response_packets", CF_INT, cf_log_response_packets, 0, "0"),
+CF_ABS("buffer_incomplete_packets", CF_INT, cf_buffer_incomplete_packets, 0, "0"),
 CF_ABS("log_packets_file", CF_STR, cf_log_packets_file, 0, "/tmp/pktlog"),
 CF_ABS("log_disconnections", CF_INT, cf_log_disconnections, 0, "1"),
 CF_ABS("log_pooler_errors", CF_INT, cf_log_pooler_errors, 0, "1"),

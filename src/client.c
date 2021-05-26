@@ -891,12 +891,44 @@ static bool handle_client_work(PgSocket *client, PktHdr *pkt)
 	client->link->ready = false;
 	client->link->idle_tx = false;
 
+
+	if (cf_log_packets) {
+		if (pkt->type == 'Q' || pkt->type == 'P' || pkt->type == 'B' || pkt->type == 'E') {
+			// This comes before the incomplete check, so we can track that we have skipped packets
+			// then use that as a reference for when we should no longer see errors
+			log_pkt_to_buffer(pkt, client);
+
+			// Check packet incomplete and assign values to struct
+			if (cf_buffer_incomplete_packets) {
+				if (incomplete_pkt(pkt) && (pkt->type == 'P' || pkt->type == 'Q')) {
+					if ((int)pkt->len <= (int)cf_sbuf_len) {
+						if (sbuf->incomplete_packet_handler.found_incomplete == 1) {
+							log_info("(CLIENT %u) Found new incomplete packet while handling existing incomplete packet", client->client_id);
+							free(sbuf->incomplete_packet_handler.packet_buffer);
+							sbuf->incomplete_packet_handler.packet_buffer = NULL;
+							sbuf->incomplete_packet_handler.found_incomplete = 0;
+						}
+						// todo add last packet timestamp to this
+						sbuf->incomplete_packet_handler.client = client;
+						sbuf->incomplete_packet_handler.found_incomplete = 1;
+						sbuf->incomplete_packet_handler.current_packet_len = 0;
+						sbuf->incomplete_packet_handler.desired_packet_len = pkt->len;
+						sbuf->incomplete_packet_handler.packet_buffer_pos = 0;
+						// Incase we go over once we have this extra room
+						log_info("(CLIENT %u) assigning buffer space for (%c) (%u): %u", client->client_id, pkt->type ,pkt->len, pkt->len + cf_sbuf_len);
+						sbuf->incomplete_packet_handler.packet_buffer = malloc(pkt->len + cf_sbuf_len);
+					}
+				}
+				
+				if (sbuf->incomplete_packet_handler.found_incomplete == 1) {
+					log_info("(CLIENT %u), type %c", client->client_id, pkt->type);
+				}
+			}
+		}
+	}
+
 	/* forward the packet */
 	sbuf_prepare_send(sbuf, &client->link->sbuf, pkt->len);
-
-	/* log the query, if needed */
-	if (cf_log_packets)
-		log_pkt_to_buffer(pkt, client);
 
 	return true;
 }

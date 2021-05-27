@@ -369,6 +369,9 @@ struct PgDatabase {
  */
 struct PgSocket {
 	uint32_t client_id; /* A "unique" id of the client */
+	
+	uint32_t packet_id; /* unique identifier for a packet, used to separate fragments */
+
 	struct List head;		/* list header */
 	PgSocket *link;		/* the dest of packets */
 	PgPool *pool;		/* parent pool, if NULL not yet assigned */

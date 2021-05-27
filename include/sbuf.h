@@ -85,6 +85,10 @@ struct SBuf {
 	const SBufIO *ops;	/* normal vs. TLS */
 	struct tls *tls;	/* TLS context */
 	const char *tls_host;	/* target hostname */
+
+	bool dump_fragments; /* should we dump whatever is streaming? */
+	uint32_t client_id; /* unique client identifier */
+	uint32_t packet_id; /* unique identifier for a packet, used to group fragments */
 };
 
 #define sbuf_socket(sbuf) ((sbuf)->sock)

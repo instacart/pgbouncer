@@ -947,10 +947,18 @@ bool client_proto(SBuf *sbuf, SBufEvent evtype, struct MBuf *data)
 			res = handle_client_startup(client, &pkt);
 			break;
 		case CL_ACTIVE:
-			if (client->wait_for_welcome)
+			if (client->wait_for_welcome) {
 				res = handle_client_startup(client, &pkt);
-			else
+			}
+			else {
+				/* generate a new unique packet id */
+				client->packet_id++;
+				/* sync with current sbuf */
+				sbuf->packet_id = client->packet_id;
+				sbuf->client_id = client->client_id;
 				res = handle_client_work(client, &pkt);
+				sbuf->dump_fragments = incomplete_pkt(&pkt);
+			}
 			break;
 		case CL_WAITING:
 			fatal("why waiting client in client_proto()");

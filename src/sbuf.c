@@ -580,6 +580,24 @@ static bool sbuf_process_pending(SBuf *sbuf)
 				return false;
 			Assert(sbuf->pkt_remain > 0);
 		}
+		else {
+
+			/* just received a new fragment, check if we are dumping them */
+			if (sbuf->dump_fragments) {
+			  log_debug("--[fragment]-------");
+			  uint32_t data_size = sbuf->io->recv_pos;
+			  uint32_t hex_size = (data_size * 2) + 1; // two char per byte, plus terminator
+			  char hex[hex_size]; 
+			  bin2hex(sbuf->io->buf, data_size, hex, sizeof(hex));
+				log_debug("   client_id:  %u", sbuf->client_id);
+			  log_debug("   packet_id:  %u", sbuf->packet_id);
+			  log_debug("   data size:  %u", data_size);
+			  log_debug("   data:       %s", hex);
+			  log_debug("   ascii:      %s", sbuf->io->buf);
+			  log_debug("-------------------");
+			}
+
+		}
 
 		if (sbuf->pkt_action == ACT_SKIP || sbuf->pkt_action == ACT_CALL) {
 			/* send any pending data before skipping */

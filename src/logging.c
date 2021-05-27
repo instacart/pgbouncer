@@ -220,6 +220,29 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   if (cf_shutdown)
     return;
 
+  log_debug("--[header]---------");
+  log_debug("   client_id:  %u", client->client_id);
+  log_debug("   packet_id:  %u", client->sbuf.packet_id);
+  log_debug("   pkt type:   %c", pkt->type);
+  log_debug("   pkt len:    %u", pkt->len);
+
+  uint32_t buf_size = mbuf_written(&pkt->data);
+  uint32_t data_size = buf_size - 4 - 1; // len (4 bytes) and type (1 byte)
+  bool is_incomplete = incomplete_pkt(pkt);
+  log_debug("   buf size:   %u", buf_size);
+  log_debug("   data size:  %u", data_size);
+  log_debug("   incomplete: %u", is_incomplete);
+
+  uint32_t hex_size = (data_size * 2) + 1; // two char per byte, plus terminator
+  char hex[hex_size]; 
+  bin2hex(pkt->data.data + pkt->data.read_pos, data_size, hex, sizeof(hex));
+
+  log_debug("   data:       %s", hex);
+  log_debug("   ascii:      %s", (pkt->data.data + pkt->data.read_pos));
+  log_debug("-------------------");
+
+
+
   log_debug("log_pkt_to_buffer: checking for incomplete_pkt");
   if (incomplete_pkt(pkt))
     return;
@@ -366,11 +389,12 @@ static void log_flush_buffer(void) {
   This is commented to allow pgbouncer to overwrite existing files
   It means we may lose packets, but we guarantee the buffer is being flushed (other wise it will be kept full and stop logging anyways)
   */
-  if (!log_ensure_file_dont_exist(next_fname))
-    return;
 
-  if (!log_ensure_file_dont_exist(next_fname_available))
-    return; 
+  // if (!log_ensure_file_dont_exist(next_fname))
+  //  return;
+
+  // if (!log_ensure_file_dont_exist(next_fname_available))
+  //  return; 
 
   fd = open(next_fname, O_EXCL | O_APPEND | O_CREAT | O_WRONLY, S_IWUSR | S_IRUSR);
   if (fd == -1) {

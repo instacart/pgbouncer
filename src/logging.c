@@ -83,6 +83,7 @@ void log_buffer_flush_cb(evutil_socket_t sock, short flags, void *arg);
 static bool log_ensure_buffer_space(uint32_t n);
 static void log_raw_packet_to_buffer(uint32_t client_id, uint32_t packet_id,
                                      uint32_t query_interval, uint32_t buf_size,
+                                     bool is_fragment,
                                      char* raw_data);
 static void log_custom_packet_to_buffer(uint32_t client_id, uint32_t packet_id,
                                         uint32_t query_interval, uint32_t buf_size,
@@ -149,7 +150,7 @@ void log_reload_to_buffer(void) {
   if (cf_shutdown)
     return;
 
-  uint32_t pkt_len = sizeof(uint8_t) + sizeof(uint32_t) + strlen(reload_command) + sizeof(char);
+  uint32_t pkt_len = sizeof(uint8_t) + sizeof(uint32_t) + strlen(reload_command);
 
   log_custom_packet_to_buffer(ignored_field, ignored_field, ignored_field,
                               pkt_len, 0, pkt_len, reload_command);
@@ -163,8 +164,8 @@ void log_connect_to_buffer(bool connected, PgSocket *client) {
   if (cf_shutdown)
     return;
 
-  // if (connected) // interested only in disconnections
-  //   return;
+  if (connected) // interested only in disconnections
+     return;
 
   uint32_t pkt_len = sizeof(uint8_t) + sizeof(uint32_t) + sizeof(uint8_t); /* type, len, connected_value */
 
@@ -177,8 +178,10 @@ void log_connect_to_buffer(bool connected, PgSocket *client) {
 void log_custom_packet_to_buffer(uint32_t client_id, uint32_t packet_id,
                                  uint32_t query_interval, uint32_t buf_size,
                                  char pkt_type, uint32_t pkt_len, const char* content) {
-  
   log_noise("log_custom_packet_to_buffer");
+
+  if (cf_shutdown)
+    return;
 
   char raw_data[buf_size];
   uint32_t header_size = sizeof(pkt_type) + sizeof(pkt_len);
@@ -201,11 +204,13 @@ void log_custom_packet_to_buffer(uint32_t client_id, uint32_t packet_id,
 
   log_raw_packet_to_buffer(client_id, packet_id,
                            query_interval, buf_size,
+                           false,
                            raw_data);
 }
 
 void log_raw_packet_to_buffer(uint32_t client_id, uint32_t packet_id,
                               uint32_t query_interval, uint32_t buf_size,
+                              bool is_fragment,
                               char* raw_data) {
   log_noise("log_raw_packet_to_buffer");
 
@@ -244,6 +249,13 @@ void log_raw_packet_to_buffer(uint32_t client_id, uint32_t packet_id,
   memcpy(buf + len, &net_buf_size, sizeof(net_buf_size));
   len += sizeof(net_buf_size);
 
+  // regular packets (non-fragment) have the pkt type embedded
+  if (is_fragment) {
+    log_noise("log_raw_packet_to_buffer: writing fragment_char");
+    memcpy(buf + len, &fragment_char, sizeof(fragment_char));
+    len += sizeof(fragment_char);
+  }
+
   log_noise("log_raw_packet_to_buffer: writing raw_data");
   memcpy(buf + len, raw_data, buf_size);
   len += buf_size;
@@ -268,7 +280,6 @@ bool log_is_packet_type_supported(PktHdr *pkt) {
   return true;
 }
 
-
 /*
  * Log packet fragment (i.e. any subsequent parts that comes after the header)
  */
@@ -280,17 +291,13 @@ void log_pkt_fragment_to_buffer(struct SBuf *sbuf) {
     return;
 
   /*
-    packet format:
+    fragment format:
 
-    field      client_id   packet_id   query_interval  buf_len   pkt_type   pkt_len    pkt_payload
-    size       [4]         [4]         [4]             [4]       [1]        [4]        {buf_len - 4 - 1}
+    field      client_id   packet_id   query_interval  buf_len   pkt_type   pkt_payload
+    size       [4]         [4]         [4]             [4]       [1]        {buf_len}
   */
 
   uint32_t buf_size = sbuf->io->recv_pos;
-  uint32_t net_client_id = htonl(sbuf->client_id);
-  uint32_t net_packet_id = htonl(sbuf->packet_id);
-  uint32_t net_buf_size = htonl(buf_size);
-
   if (cf_log_packets_debug) {
     log_info("--[fragment]-------");
     uint32_t hex_size = (buf_size * 2) + 1; // two char per byte, plus terminator
@@ -304,47 +311,10 @@ void log_pkt_fragment_to_buffer(struct SBuf *sbuf) {
     log_info("-------------------");
   }
 
-  /* Buffer full, drop the packet logging on the floor.
-   * No logging since this function is called for each incoming packet.
-   *
-   * pkt->len = packet size
-   * + 16 bytes of metadata
-   */
-  log_noise("log_pkt_fragment_to_buffer: log_ensure_buffer_space");
-
-  uint32_t total_packet_size = sizeof(net_client_id) +
-                               sizeof(net_packet_id) +
-                               sizeof(ignored_field) + /* net_query_interval (ignored) */
-                               sizeof(net_buf_size) +
-                               sizeof(char) +
-                               buf_size;
-
-  if (!log_ensure_buffer_space(total_packet_size))
-    return;
-
-  log_noise("log_pkt_fragment_to_buffer: writing net_client_id");
-  memcpy(buf + len, &net_client_id, sizeof(net_client_id));
-  len += sizeof(net_client_id);
-
-  log_noise("log_pkt_fragment_to_buffer: writing net_packet_id");
-  memcpy(buf + len, &net_packet_id, sizeof(net_packet_id));
-  len += sizeof(net_packet_id);
-
-  log_noise("log_pkt_fragment_to_buffer: writing net_query_interval (ignored)");
-  memcpy(buf + len, &ignored_field, sizeof(ignored_field));
-  len += sizeof(ignored_field);
-
-  log_noise("log_pkt_fragment_to_buffer: writing net_buf_size");
-  memcpy(buf + len, &net_buf_size, sizeof(net_buf_size));
-  len += sizeof(net_buf_size);
-
-  log_noise("log_connect_to_buffer: writing pkt_type (fragment_char)");
-  memcpy(buf + len, &fragment_char, sizeof(char));
-  len += sizeof(char);
-
-  log_noise("log_pkt_fragment_to_buffer: writing pkt fragment");
-  memcpy(buf + len, sbuf->io->buf, buf_size);
-  len += buf_size;
+  log_raw_packet_to_buffer(sbuf->client_id, sbuf->packet_id,
+                           ignored_field, buf_size,
+                           true,
+                           (char *) sbuf->io->buf);
 }
 
 /*
@@ -372,12 +342,6 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
     data_size -= 4 + 1;  // ignore len (4 bytes) and type (1 byte)
   }
   
-  uint32_t net_client_id = htonl(client->client_id);
-  uint32_t net_packet_id = htonl(client->sbuf.packet_id);
-  uint32_t net_buf_size = htonl(buf_size);
-  uint32_t query_interval = 0, net_query_interval;
-  
-
   if (cf_log_packets_debug) {
     log_info("--[header]---------");
     log_info("   client_id:  %u", client->client_id);
@@ -399,60 +363,27 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   }
 
   if (!log_is_packet_type_supported(pkt)) {
+    log_noise("log_pkt_to_buffer: ignoring packet type '%c'", pkt->type);
     return;
   }
 
-  /* Buffer full, drop the packet logging on the floor.
-   * No logging since this function is called for each incoming packet.
-   *
-   * pkt->len = packet size
-   * + 16 bytes of metadata
-   */
-  log_noise("log_pkt_to_buffer: log_ensure_buffer_space");
-
-  uint32_t total_packet_size = sizeof(net_client_id) +
-                               sizeof(net_packet_id) +
-                               sizeof(net_query_interval) +
-                               sizeof(net_buf_size) +
-                               buf_size;
-
-  if (!log_ensure_buffer_space(total_packet_size))
-    return;
-
   /* record intervals between packets */
   log_noise("log_pkt_to_buffer: calc interval");
+  uint32_t query_interval = 0;
   if (client->last_pkt > 0) {
     usec_t query_interval_usec = get_cached_time() - client->last_pkt;
-
     if (query_interval_usec > UINT32_MAX) {
       query_interval = UINT32_MAX; /* up to about an hour between queries */
     } else {
-      query_interval = (uint32_t)query_interval_usec;
+      query_interval = (uint32_t) query_interval_usec;
     }
   }
   client->last_pkt = get_cached_time();
 
-  net_query_interval = htonl(query_interval);
-
-  log_noise("log_pkt_to_buffer: writing net_client_id");
-  memcpy(buf + len, &net_client_id, sizeof(net_client_id));
-  len += sizeof(net_client_id);
-
-  log_noise("log_pkt_to_buffer: writing net_packet_id");
-  memcpy(buf + len, &net_packet_id, sizeof(net_packet_id));
-  len += sizeof(net_packet_id);
-
-  log_noise("log_pkt_to_buffer: writing net_query_interval");
-  memcpy(buf + len, &net_query_interval, sizeof(net_query_interval));
-  len += sizeof(net_query_interval);
-
-  log_noise("log_pkt_to_buffer: writing net_buf_size");
-  memcpy(buf + len, &net_buf_size, sizeof(net_buf_size));
-  len += sizeof(net_buf_size);
-
-  log_noise("log_pkt_to_buffer: writing pkt data");
-  memcpy(buf + len, pkt->data.data, buf_size);
-  len += buf_size;
+  log_raw_packet_to_buffer(client->client_id, client->sbuf.packet_id,
+                           query_interval, buf_size,
+                           false,
+                           (char *) pkt->data.data);
 }
 
 /*

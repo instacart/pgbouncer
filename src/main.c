@@ -154,8 +154,10 @@ int cf_log_connections;
 int cf_log_disconnections;
 int cf_log_pooler_errors;
 int cf_application_name_add_host;
+
 int cf_log_packets;
 char *cf_log_packets_file;
+int cf_log_packets_debug;
 
 int cf_client_tls_sslmode;
 char *cf_client_tls_protocols;

@@ -338,8 +338,8 @@ void log_pkt_to_buffer(PktHdr *pkt, PgSocket *client) {
   uint32_t buf_size = mbuf_written(&pkt->data);
   uint32_t data_size = buf_size;
   if (!is_incomplete) {
-    buf_size -= 1;  // ignore terminator
-    data_size -= 4 + 1;  // ignore len (4 bytes) and type (1 byte)
+    // buf_size -= 1;  // ignore terminator
+    data_size -= 4;  // ignore len (4 bytes)
   }
   
   if (cf_log_packets_debug) {

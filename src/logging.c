@@ -283,7 +283,7 @@ bool log_is_packet_type_supported(PktHdr *pkt) {
 /*
  * Log packet fragment (i.e. any subsequent parts that comes after the header)
  */
-void log_pkt_fragment_to_buffer(struct SBuf *sbuf) {
+void log_pkt_fragment_to_buffer(struct SBuf *sbuf, unsigned buf_size) {
   log_noise("log_pkt_fragment_to_buffer");
 
   /* If the bouncer is shutting down, the buffer is gone. */
@@ -297,7 +297,10 @@ void log_pkt_fragment_to_buffer(struct SBuf *sbuf) {
     size       [4]         [4]         [4]             [4]       [1]        {buf_len}
   */
 
-  uint32_t buf_size = sbuf->io->recv_pos;
+  /* packet boundaries */
+  if (buf_size > sbuf->pkt_remain)
+      buf_size = sbuf->pkt_remain;
+
   if (cf_log_packets_debug) {
     log_info("--[fragment]-------");
     uint32_t hex_size = (buf_size * 2) + 1; // two char per byte, plus terminator

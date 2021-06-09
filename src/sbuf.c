@@ -583,7 +583,7 @@ static bool sbuf_process_pending(SBuf *sbuf)
 		else {
 			/* just received a new fragment, check if we resuming a packet on the wire */
 			if (sbuf->dump_fragments) {
-				log_pkt_fragment_to_buffer(sbuf);
+				log_pkt_fragment_to_buffer(sbuf, avail);
 			}
 		}
 

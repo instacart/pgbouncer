@@ -24,7 +24,7 @@
 #include <sys/file.h>
 #include <time.h>
 
-#define LOG_BUFFER_SIZE 1024 * 1024 * 2 /* 2 MB */
+#define LOG_BUFFER_SIZE 1024 * 1024 * 4 /* 4 MB */
 
 /* File id to prevent accidental collision, appended to file name such as 'pktlog.001' */
 /*

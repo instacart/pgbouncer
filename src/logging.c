@@ -24,7 +24,7 @@
 #include <sys/file.h>
 #include <time.h>
 
-#define LOG_BUFFER_SIZE 1024 * 1024 * 4 /* 4 MB */
+#define LOG_BUFFER_SIZE 1024 * 1024 * 16 /* 16 MB */
 
 /* File id to prevent accidental collision, appended to file name such as 'pktlog.001' */
 /*
@@ -68,8 +68,8 @@ static const char *reload_command = "RELOAD";
 static const char connect_char = '!';
 static const char fragment_char = '*';
 
-/* Flush packets 4 times per second - every 250ms */
-static struct timeval buffer_drain_period = {0, USEC / 4};
+/* Flush packets 8 times per second - every 125ms */
+static struct timeval buffer_drain_period = {0, USEC / 8};
 static struct event buffer_drain_ev;
 
 /* The buffer */
